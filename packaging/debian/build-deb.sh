@@ -114,10 +114,10 @@ chmod 0644 "${stage}/DEBIAN/md5sums"
 
 mkdir -p "$outdir"
 dpkg-deb --root-owner-group -Zxz -z9 --build "$stage" "${outdir}/${name}.deb" >/dev/null
+{
+    echo "linked at load time:"
+    objdump -p "$binary" | awk '/NEEDED/ {print "  " $2}'
+    echo "declared in Depends:"
+    sed -n 's/^Depends: //p' "${stage}/DEBIAN/control" | tr ',' '\n' | sed 's/^ */  /'
+} >&2
 echo "${outdir}/${name}.deb"
-
-echo
-echo "linked at load time:"
-objdump -p "$binary" | awk '/NEEDED/ {print "  " $2}'
-echo "declared in Depends:"
-sed -n 's/^Depends: //p' "${stage}/DEBIAN/control" | tr ',' '\n' | sed 's/^ */  /'

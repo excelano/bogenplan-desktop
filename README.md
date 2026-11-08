@@ -28,6 +28,14 @@ a zero-length event with an alert at its start to the calendar you choose, so th
 alert reaches every device that has that calendar. Bogenplan never edits or
 deletes an event.
 
+## Install
+
+On Debian and Ubuntu, from the Excelano apt repository:
+
+```
+curl -fsSL https://excelano.com/apt/setup.sh | sudo sh && sudo apt install bogenplan
+```
+
 ## Building
 
 It is a Rust workspace and builds with a current stable toolchain:
