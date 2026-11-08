@@ -1,0 +1,57 @@
+.\" Manual page for bogenplan. @VERSION@ is filled in by build-deb.sh.
+.\"
+.\" Author: David M. Anderson
+.\" Built with AI assistance (Claude, Anthropic)
+.TH BOGENPLAN 1 "2026\-11\-08" "bogenplan @VERSION@" "User Commands"
+.SH NAME
+bogenplan \- a calendar laid out on the Sun's arc
+.SH SYNOPSIS
+.B bogenplan
+.RB [ \-\-demo ]
+.RB [ \-\-date
+.IR YYYY\-MM\-DD ]
+.RB [ \-\-zoom
+.IR points ]
+.SH DESCRIPTION
+.B Bogenplan
+shows the calendars kept on iCloud or another CalDAV server in Bogenzeit.
+Each day runs from one solar midnight to the next and holds 400 spans, with
+sunrise at 100, solar noon at 200 and sunset at 300, so daylight always fills
+the middle half of the column and the events move with the seasons.
+.PP
+Pressing and holding an empty part of a day shows the reading at that point;
+holding still until the line turns gold and letting go sets a moment there, a
+zero\-length event with an alert at its start, added to the calendar chosen in
+Settings. Double\-clicking does the same at once.
+.SH OPTIONS
+.TP
+.B \-\-demo
+Show a sample week in Houston instead of the calendars signed in.
+.TP
+.BI \-\-date " YYYY\-MM\-DD"
+Open on this date rather than today.
+.TP
+.BI \-\-zoom " points"
+Open with this many points per span.
+.SH FILES
+.TP
+.I ~/.config/bogenplan/settings.json
+Scale, precision, hidden calendars, the calendar for moments and the place.
+.TP
+.I ~/.cache/bogenplan/calendars.json
+The events last fetched, readable only by the user.
+.PP
+Passwords are kept in the desktop keyring under the attribute
+.BR service=bogenplan ,
+with
+.B server
+and
+.B username
+beside it.
+.SH EXIT STATUS
+Returns success when the window has been closed. A non\-zero status means the
+window could not be created at all: no display, or no usable graphics driver.
+.SH SEE ALSO
+.BR bz (1)
+.SH AUTHOR
+David M. Anderson <david.anderson@excelano.com>

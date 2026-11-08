@@ -1,0 +1,39 @@
+[workspace]
+members = ["store"]
+
+[package]
+name = "bogenplan"
+description = "A calendar laid out on the Sun's arc"
+version = "0.1.0"
+edition = "2024"
+authors = ["David M. Anderson"]
+license = "MIT"
+repository = "https://github.com/excelano/bogenplan-desktop"
+publish = false
+rust-version = "1.95"
+
+[[bin]]
+name = "bogenplan"
+path = "src/main.rs"
+
+[dependencies]
+bogenplan-store = { path = "store" }
+bz = { git = "https://github.com/excelano/bogenzeit", rev = "3e0163c4fd8b5c000847ea84be01025b588fd7e8" }
+chrono = "0.4"
+chrono-tz = "0.10"
+eframe = "0.36"
+egui_extras = { version = "0.36", features = ["datepicker"] }
+jiff = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "time"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+futures-util = { version = "0.3", default-features = false }
+
+png = { version = "0.18", optional = true }
+
+[features]
+screenshot = ["dep:png"]
+
+[profile.release]
+lto = "thin"
