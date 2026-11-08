@@ -616,8 +616,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "bz"
-version = "0.6.0"
-source = "git+https://github.com/excelano/bogenzeit?rev=3e0163c4fd8b5c000847ea84be01025b588fd7e8#3e0163c4fd8b5c000847ea84be01025b588fd7e8"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "018c58ecdbe3087381d7a921aea20c57719a2e076621eb73d20afca5a62083c1"
 
 [[package]]
 name = "calloop"

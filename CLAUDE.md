@@ -18,7 +18,7 @@ is the day view and the press-and-hold probe, `axis.rs` the 400-span axis,
 `display.rs` the display forms, `glyph.rs` the drawn glyphs, `demo.rs` the
 sample week behind `--demo`.
 
-The engine is `bz` from excelano/bogenzeit, pinned by revision in `Cargo.toml`.
+The engine is the `bz` crate from excelano/bogenzeit, from crates.io.
 
 ## Commands
 

@@ -18,7 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 bogenplan-store = { path = "store" }
-bz = { git = "https://github.com/excelano/bogenzeit", rev = "3e0163c4fd8b5c000847ea84be01025b588fd7e8" }
+bz = "0.7.0"
 chrono = "0.4"
 chrono-tz = "0.10"
 eframe = "0.36"
