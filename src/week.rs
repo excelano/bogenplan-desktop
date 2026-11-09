@@ -5,6 +5,7 @@ use chrono::Weekday;
 use eframe::egui::{Align2, Button, FontId, Rect, Sense, Ui, pos2, vec2};
 
 use crate::civil::{date_of, day_of, naive, week_start};
+use crate::day::GUTTER;
 use crate::palette;
 
 pub fn strip(ui: &mut Ui, selection: i64, today: i64, first: Weekday) -> Option<i64> {
@@ -12,8 +13,8 @@ pub fn strip(ui: &mut Ui, selection: i64, today: i64, first: Weekday) -> Option<
     let mut picked = None;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
-        let arrow = vec2(28.0, 56.0);
-        let width = (ui.available_width() - 2.0 * arrow.x) / 7.0;
+        let arrow = vec2(GUTTER / 2.0, 56.0);
+        let width = (ui.available_width() - GUTTER) / 7.0;
         if ui
             .add_sized(arrow, Button::new("‹").frame(false))
             .on_hover_text("Previous week")
@@ -21,19 +22,19 @@ pub fn strip(ui: &mut Ui, selection: i64, today: i64, first: Weekday) -> Option<
         {
             picked = Some(selection - 7);
         }
-        for day in start..start + 7 {
-            let (cell, response) = ui.allocate_exact_size(vec2(width, 56.0), Sense::click());
-            paint_cell(ui, cell, day, day == selection, day == today);
-            if response.clicked() {
-                picked = Some(day);
-            }
-        }
         if ui
             .add_sized(arrow, Button::new("›").frame(false))
             .on_hover_text("Next week")
             .clicked()
         {
             picked = Some(selection + 7);
+        }
+        for day in start..start + 7 {
+            let (cell, response) = ui.allocate_exact_size(vec2(width, 56.0), Sense::click());
+            paint_cell(ui, cell, day, day == selection, day == today);
+            if response.clicked() {
+                picked = Some(day);
+            }
         }
     });
     picked

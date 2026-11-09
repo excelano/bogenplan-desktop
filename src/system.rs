@@ -8,7 +8,6 @@ use zbus::{Connection, Proxy};
 
 use crate::civil::Clock;
 
-
 fn block_on<T>(work: impl Future<Output = T>) -> T {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()

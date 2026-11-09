@@ -32,6 +32,7 @@ const SETTINGS: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key
 const REFRESH: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F5);
 const MOMENT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
 const OPENING_MARGIN: f32 = 160.0;
+const HEADER_MARGIN: f32 = 12.0;
 
 pub enum Source {
     Live(Store),
@@ -376,7 +377,7 @@ impl App {
                     egui::vec2(lane, 0.0),
                     Layout::top_down(Align::Min),
                     |ui| {
-                        ui.set_width(lane - 12.0);
+                        ui.set_width(lane - HEADER_MARGIN);
                         ui.add_space(6.0);
                         let today = column.day == self.today;
                         ui.horizontal(|ui| {
@@ -425,6 +426,7 @@ impl App {
                         ui.add_space(6.0);
                     },
                 );
+                ui.add_space(HEADER_MARGIN);
             }
         });
     }
@@ -502,11 +504,16 @@ impl App {
             self.toolbar(ui, start, count, calendars);
             ui.add_space(4.0);
         });
-        egui::Panel::bottom("week").show(ui, |ui| {
-            if let Some(day) = week::strip(ui, self.selection, self.today, self.first_weekday) {
-                self.go(day);
-            }
-        });
+        egui::Panel::bottom("week")
+            .frame(
+                egui::Frame::side_top_panel(&ui.ctx().global_style())
+                    .inner_margin(egui::Margin::symmetric(0, 2)),
+            )
+            .show(ui, |ui| {
+                if let Some(day) = week::strip(ui, self.selection, self.today, self.first_weekday) {
+                    self.go(day);
+                }
+            });
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(palette::NIGHT))
             .show(ui, |ui| {
