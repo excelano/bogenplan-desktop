@@ -1,3 +1,9 @@
+bogenplan (0.2.2) unstable; urgency=medium
+
+  * Press and hold: the line shows however the pointer drifts while pressing; it arms only when held still
+
+ -- David M. Anderson <david.anderson@excelano.com>  Sun, 08 Nov 2026 19:14:53 -0600
+
 bogenplan (0.2.1) unstable; urgency=medium
 
   * Icon: the iOS app's yellow sun on daytime blue, on GNOME's rounded square
