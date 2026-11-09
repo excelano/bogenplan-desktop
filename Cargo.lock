@@ -539,7 +539,7 @@ dependencies = [
 
 [[package]]
 name = "bogenplan"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "bogenplan-store",
  "bz",
@@ -557,7 +557,7 @@ dependencies = [
 
 [[package]]
 name = "bogenplan-store"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "chrono-tz",
