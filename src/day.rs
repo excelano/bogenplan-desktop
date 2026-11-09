@@ -454,29 +454,20 @@ impl DayView<'_> {
             *probe = None;
             return set;
         }
-        let moved = (at - current.still).length() > STILL_POINTS;
-        if !current.shown {
-            if moved {
-                *probe = None;
-                return None;
-            }
-            if time - current.pressed_at >= HOLD_TO_SHOW {
-                current.shown = true;
-                current.still_at = time;
-                current.still = at;
-            }
-        } else {
-            current.y = at.y.clamp(
-                lane.top(),
-                lane.top() + LENGTH as f32 * self.points_per_span,
-            );
-            if moved {
-                current.still = at;
-                current.still_at = time;
-                current.armed = false;
-            } else if time - current.still_at >= HOLD_TO_ARM {
-                current.armed = true;
-            }
+        current.y = at.y.clamp(
+            lane.top(),
+            lane.top() + LENGTH as f32 * self.points_per_span,
+        );
+        if (at - current.still).length() > STILL_POINTS {
+            current.still = at;
+            current.still_at = time;
+            current.armed = false;
+        }
+        if !current.shown && time - current.pressed_at >= HOLD_TO_SHOW {
+            current.shown = true;
+            current.still_at = time;
+        } else if current.shown && time - current.still_at >= HOLD_TO_ARM {
+            current.armed = true;
         }
         ui.ctx().request_repaint();
         None
