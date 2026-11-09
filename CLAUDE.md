@@ -5,7 +5,9 @@ laid out in Bogenzeit, an egui application. It is the desktop sibling of
 excelano/bogenplan, the iPhone and iPad app, and follows that repository's
 `docs/concept.md`; the Bogenzeit spec in excelano/bogenzeit is normative. The
 only events it creates are moments, zero-length events with an alert at their
-start; it does not edit or delete events.
+start. It edits and deletes events by rewriting the fields it changes in the
+event's own iCalendar text (`store/src/edit.rs`), never regenerating it, and
+writes with If-Match on the cached etag.
 
 ## Layout
 

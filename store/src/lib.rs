@@ -6,6 +6,7 @@
 mod cache;
 mod caldav;
 mod credentials;
+mod edit;
 mod expand;
 mod ics;
 mod model;
@@ -20,7 +21,7 @@ use std::time::Duration;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use tokio::sync::mpsc;
 
-pub use model::{Account, Calendar, CalendarId, Occurrence, OccurrenceTime, Status};
+pub use model::{Account, Calendar, CalendarId, Change, Occurrence, OccurrenceTime, Scope, Status};
 
 use cache::{CalendarData, Resource};
 use caldav::Connection;
@@ -34,6 +35,8 @@ pub trait CalendarSource {
     fn calendars(&self) -> Vec<Calendar>;
     fn occurrences(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Vec<Occurrence>;
     fn add_moment(&self, at: DateTime<Utc>, title: String, calendar: &CalendarId) -> Reply;
+    fn change(&self, occurrence: &Occurrence, change: Change, scope: Scope) -> Reply;
+    fn delete(&self, occurrence: &Occurrence, scope: Scope) -> Reply;
 }
 
 pub struct Store {
@@ -61,6 +64,17 @@ enum Command {
         at: DateTime<Utc>,
         title: String,
         calendar: CalendarId,
+        reply: reply::Sender<Result<(), String>>,
+    },
+    Change {
+        occurrence: Occurrence,
+        change: Change,
+        scope: Scope,
+        reply: reply::Sender<Result<(), String>>,
+    },
+    Delete {
+        occurrence: Occurrence,
+        scope: Scope,
         reply: reply::Sender<Result<(), String>>,
     },
     SignIn {
@@ -154,6 +168,9 @@ impl Store {
                 found.push(Occurrence {
                     calendar: calendar.clone(),
                     key: format!("{href}@{}", instance.time.start_instant().timestamp()),
+                    href: href.clone(),
+                    uid: instance.event.uid.clone(),
+                    original: instance.original,
                     title: instance.event.summary.clone(),
                     location: instance.event.location.clone(),
                     notes: instance.event.description.clone(),
@@ -206,6 +223,27 @@ impl CalendarSource for Store {
         });
         receiver
     }
+
+    fn change(&self, occurrence: &Occurrence, change: Change, scope: Scope) -> Reply {
+        let (sender, receiver) = reply::channel();
+        let _ = self.commands.send(Command::Change {
+            occurrence: occurrence.clone(),
+            change,
+            scope,
+            reply: sender,
+        });
+        receiver
+    }
+
+    fn delete(&self, occurrence: &Occurrence, scope: Scope) -> Reply {
+        let (sender, receiver) = reply::channel();
+        let _ = self.commands.send(Command::Delete {
+            occurrence: occurrence.clone(),
+            scope,
+            reply: sender,
+        });
+        receiver
+    }
 }
 
 struct Worker {
@@ -244,6 +282,21 @@ impl Worker {
                 reply,
             } => {
                 let _ = reply.send(self.add_moment(at, &title, &calendar).await);
+            }
+            Command::Change {
+                occurrence,
+                change,
+                scope,
+                reply,
+            } => {
+                let _ = reply.send(self.change(&occurrence, &change, scope).await);
+            }
+            Command::Delete {
+                occurrence,
+                scope,
+                reply,
+            } => {
+                let _ = reply.send(self.delete(&occurrence, scope).await);
             }
             Command::SignIn { credentials, reply } => {
                 let result = match Connection::open(&credentials).await {
@@ -333,25 +386,131 @@ impl Worker {
         result
     }
 
+    fn calendar_index(&self, calendar: &CalendarId) -> Result<usize, String> {
+        self.calendars
+            .iter()
+            .position(|data| &data.calendar.id == calendar)
+            .ok_or_else(|| "That calendar is no longer on the server.".to_string())
+    }
+
+    async fn connect(&self, index: usize) -> Result<Connection, String> {
+        let account = &self.calendars[index].calendar.account;
+        let credentials = self
+            .accounts
+            .iter()
+            .find(|credentials| &credentials.key() == account)
+            .ok_or("The account for that calendar is signed out.")?;
+        Ok(Connection::open(credentials).await?.0)
+    }
+
+    fn resource(&self, index: usize, href: &str) -> Result<Resource, String> {
+        self.calendars[index]
+            .resources
+            .get(href)
+            .cloned()
+            .ok_or_else(|| {
+                "The event is no longer in its calendar. Refresh and try again.".to_string()
+            })
+    }
+
+    async fn delete(&mut self, occurrence: &Occurrence, scope: Scope) -> Result<(), String> {
+        let index = self.calendar_index(&occurrence.calendar)?;
+        let resource = self.resource(index, &occurrence.href)?;
+        let target = edit::Target {
+            uid: &occurrence.uid,
+            original: occurrence.original,
+            time: occurrence.time,
+        };
+        let write = edit::delete(&resource.data, &target, scope, Utc::now())?;
+        let connection = self.connect(index).await?;
+        let resources = match write {
+            edit::Write::Delete => {
+                connection.delete(&occurrence.href, &resource.etag).await?;
+                None
+            }
+            edit::Write::Put(text) => {
+                let etag = connection
+                    .update(&occurrence.href, text.clone(), &resource.etag)
+                    .await?;
+                Some(Resource::new(etag, text))
+            }
+        };
+        let data = &mut self.calendars[index].resources;
+        match resources {
+            Some(resource) => {
+                data.insert(occurrence.href.clone(), resource);
+            }
+            None => {
+                data.remove(&occurrence.href);
+            }
+        }
+        self.save();
+        self.publish();
+        Ok(())
+    }
+
+    async fn change(
+        &mut self,
+        occurrence: &Occurrence,
+        change: &Change,
+        scope: Scope,
+    ) -> Result<(), String> {
+        let index = self.calendar_index(&occurrence.calendar)?;
+        let resource = self.resource(index, &occurrence.href)?;
+        let moving = change.calendar != occurrence.calendar;
+        if moving && occurrence.repeats() && scope == Scope::One {
+            return Err(
+                "One occurrence cannot move to another calendar. Move the whole series instead."
+                    .to_string(),
+            );
+        }
+        let target = edit::Target {
+            uid: &occurrence.uid,
+            original: occurrence.original,
+            time: occurrence.time,
+        };
+        let text = edit::change(&resource.data, &target, scope, change, Utc::now())?;
+        let connection = self.connect(index).await?;
+        if !moving {
+            let etag = connection
+                .update(&occurrence.href, text.clone(), &resource.etag)
+                .await?;
+            self.calendars[index]
+                .resources
+                .insert(occurrence.href.clone(), Resource::new(etag, text));
+            self.save();
+            self.publish();
+            return Ok(());
+        }
+        let destination = self.calendar_index(&change.calendar)?;
+        let name = uuid::Uuid::new_v4().to_string().to_uppercase();
+        let (href, etag) = self
+            .connect(destination)
+            .await?
+            .put(&self.calendars[destination].href, &name, text.clone())
+            .await?;
+        self.calendars[destination]
+            .resources
+            .insert(href, Resource::new(etag.unwrap_or_default(), text));
+        let removed = connection.delete(&occurrence.href, &resource.etag).await;
+        if removed.is_ok() {
+            self.calendars[index].resources.remove(&occurrence.href);
+        }
+        self.save();
+        self.publish();
+        removed.map_err(|error| {
+            format!("The event was copied, but the original could not be removed: {error}")
+        })
+    }
+
     async fn add_moment(
         &mut self,
         at: DateTime<Utc>,
         title: &str,
         calendar: &CalendarId,
     ) -> Result<(), String> {
-        let index = self
-            .calendars
-            .iter()
-            .position(|data| &data.calendar.id == calendar)
-            .ok_or("That calendar is no longer on the server.")?;
-        let account = self.calendars[index].calendar.account.clone();
-        let credentials = self
-            .accounts
-            .iter()
-            .find(|credentials| credentials.key() == account)
-            .ok_or("The account for that calendar is signed out.")?
-            .clone();
-        let (connection, _) = Connection::open(&credentials).await?;
+        let index = self.calendar_index(calendar)?;
+        let connection = self.connect(index).await?;
         let uid = uuid::Uuid::new_v4().to_string().to_uppercase();
         let ics = moment::ics(&uid, at, title, Utc::now());
         let (href, etag) = connection

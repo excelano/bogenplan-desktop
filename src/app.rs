@@ -18,6 +18,7 @@ use crate::day::{self, Action, Colors, Column, DayView, Probe};
 use crate::demo::{self, Demo};
 use crate::detail;
 use crate::display::{Precision, Readout, Scale};
+use crate::editor::{self, Deletion, Editor};
 use crate::glyph::Label;
 use crate::moment::{Draft, Outcome};
 use crate::palette;
@@ -63,6 +64,8 @@ pub struct App {
     probe: Option<Probe>,
     detail: Option<Occurrence>,
     all_day: Option<Vec<Occurrence>>,
+    editor: Option<Editor>,
+    deletion: Option<Deletion>,
     moment: Option<Draft>,
     settings_open: bool,
     sign_in: SignIn,
@@ -100,6 +103,8 @@ impl App {
             probe: None,
             detail: None,
             all_day: None,
+            editor: None,
+            deletion: None,
             moment: None,
             settings_open: false,
             sign_in: SignIn::default(),
@@ -129,19 +134,19 @@ impl App {
 
     #[cfg(feature = "screenshot")]
     pub fn open_for_screenshot(&mut self, what: &str) {
+        let titled = |app: &App, title: &str| {
+            let place = app.settings.place?;
+            let axis = DayAxis::new(date_of(app.selection), place);
+            app.source
+                .calendars()
+                .occurrences(axis.start(), axis.end())
+                .into_iter()
+                .find(|occurrence| occurrence.title == title)
+        };
         match what.split_once(':') {
-            Some(("event", title)) => {
-                let Some(place) = self.settings.place else {
-                    return;
-                };
-                let axis = DayAxis::new(date_of(self.selection), place);
-                self.detail = self
-                    .source
-                    .calendars()
-                    .occurrences(axis.start(), axis.end())
-                    .into_iter()
-                    .find(|occurrence| occurrence.title == title);
-            }
+            Some(("event", title)) => self.detail = titled(self, title),
+            Some(("edit", title)) => self.editor = titled(self, title).map(Editor::new),
+            Some(("delete", title)) => self.deletion = titled(self, title).map(Deletion::new),
             _ if what == "settings" => self.settings_open = true,
             _ if what == "moment" => self.start_moment(None),
             _ => {}
@@ -223,7 +228,11 @@ impl App {
         if ctx.input_mut(|i| i.consume_shortcut(&MOMENT)) && self.moment.is_none() {
             self.start_moment(None);
         }
-        let modal = self.moment.is_some() || self.detail.is_some() || self.all_day.is_some();
+        let modal = self.moment.is_some()
+            || self.detail.is_some()
+            || self.all_day.is_some()
+            || self.editor.is_some()
+            || self.deletion.is_some();
         if modal || ctx.memory(|memory| memory.focused().is_some()) {
             if ctx.input(|i| i.key_pressed(Key::Escape)) {
                 self.detail = None;
@@ -565,15 +574,26 @@ impl App {
             let calendar = calendars
                 .iter()
                 .find(|calendar| calendar.id == occurrence.calendar);
-            egui::Window::new("Event")
+            let action = egui::Window::new("Event")
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
                 .default_width(380.0)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .show(ctx, |ui| detail::show(ui, &occurrence, calendar, &readout));
-            if !open {
-                self.detail = None;
+                .show(ctx, |ui| detail::show(ui, &occurrence, calendar, &readout))
+                .and_then(|response| response.inner)
+                .flatten();
+            match action {
+                Some(detail::Action::Edit) => {
+                    self.detail = None;
+                    self.editor = Some(Editor::new(occurrence));
+                }
+                Some(detail::Action::Delete) => {
+                    self.detail = None;
+                    self.deletion = Some(Deletion::new(occurrence));
+                }
+                None if !open => self.detail = None,
+                None => {}
             }
         }
         if let Some(list) = self.all_day.clone() {
@@ -596,6 +616,7 @@ impl App {
                 self.detail = chosen;
             }
         }
+        self.change_windows(ctx, calendars);
         if self.moment.is_some() {
             let calendar = self.moment_calendar(calendars);
             let draft = self.moment.as_mut().expect("checked above");
@@ -611,6 +632,36 @@ impl App {
                 Outcome::Added | Outcome::Cancelled => self.moment = None,
                 Outcome::Open if response.should_close() => self.moment = None,
                 Outcome::Open => {}
+            }
+        }
+    }
+
+    fn change_windows(&mut self, ctx: &egui::Context, calendars: &[Calendar]) {
+        if let Some(editor) = self.editor.as_mut() {
+            let response = egui::Modal::new(egui::Id::new("edit event"))
+                .show(ctx, |ui| editor.show(ui, calendars));
+            match response.inner {
+                editor::Edited::Save(change, scope) => {
+                    let reply = self
+                        .source
+                        .calendars()
+                        .change(&editor.occurrence, change, scope);
+                    editor.wait(reply);
+                }
+                editor::Edited::Closed => self.editor = None,
+                editor::Edited::Open => {}
+            }
+        }
+        if let Some(deletion) = self.deletion.as_mut() {
+            let response =
+                egui::Modal::new(egui::Id::new("delete event")).show(ctx, |ui| deletion.show(ui));
+            match response.inner {
+                editor::Deleted::Delete(scope) => {
+                    let reply = self.source.calendars().delete(&deletion.occurrence, scope);
+                    deletion.wait(reply);
+                }
+                editor::Deleted::Closed => self.deletion = None,
+                editor::Deleted::Open => {}
             }
         }
     }

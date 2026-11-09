@@ -15,7 +15,7 @@ Description: Your calendars laid out on the Sun's arc
  before or after solar noon or solar midnight where you are. Civil times
  stay beside every reading.
  .
- It reads events and writes only moments, zero-length events with an alert
- at their start, which reach every device that has the calendar. Passwords
+ It sets moments, zero-length events with an alert at their start, which
+ reach every device that has the calendar, and edits or deletes events. Passwords
  are kept in the desktop keyring and events in a private cache, and the only
  network connection is to the calendar server.

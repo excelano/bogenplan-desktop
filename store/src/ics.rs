@@ -216,6 +216,27 @@ fn duration(value: &str) -> Option<Duration> {
     Some(Duration::seconds(sign * seconds))
 }
 
+pub(crate) fn escape(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace(';', "\\;")
+        .replace(',', "\\,")
+        .replace('\n', "\\n")
+}
+
+pub(crate) fn fold(line: &str) -> String {
+    let mut folded = String::new();
+    let mut width = 0;
+    for c in line.chars() {
+        if width + c.len_utf8() > 75 {
+            folded.push_str("\r\n ");
+            width = 1;
+        }
+        folded.push(c);
+        width += c.len_utf8();
+    }
+    folded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

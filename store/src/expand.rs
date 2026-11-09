@@ -10,6 +10,7 @@ use crate::model::OccurrenceTime;
 pub(crate) struct Instance<'a> {
     pub event: &'a Event,
     pub time: OccurrenceTime,
+    pub original: Option<DateTime<Utc>>,
 }
 
 pub(crate) fn instances<'a>(
@@ -28,11 +29,13 @@ pub(crate) fn instances<'a>(
             .filter(|event| event.uid == master.uid)
             .filter_map(|event| event.recurrence_id.as_ref().map(Stamp::to_utc))
             .collect();
+        let repeats = master.rrule.is_some() || !master.rdates.is_empty();
         for time in series(master, from, to) {
             if !replaced.contains(&time.start_instant()) && time.overlaps(from, to) {
                 found.push(Instance {
                     event: master,
                     time,
+                    original: repeats.then(|| time.start_instant()),
                 });
             }
         }
@@ -40,7 +43,11 @@ pub(crate) fn instances<'a>(
     for event in overrides {
         let time = single(event);
         if time.overlaps(from, to) {
-            found.push(Instance { event, time });
+            found.push(Instance {
+                event,
+                time,
+                original: event.recurrence_id.as_ref().map(Stamp::to_utc),
+            });
         }
     }
     found

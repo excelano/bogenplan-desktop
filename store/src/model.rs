@@ -64,10 +64,34 @@ impl OccurrenceTime {
 pub struct Occurrence {
     pub calendar: CalendarId,
     pub key: String,
+    pub href: String,
+    pub uid: String,
+    pub original: Option<DateTime<Utc>>,
     pub title: String,
     pub location: Option<String>,
     pub notes: Option<String>,
     pub time: OccurrenceTime,
+}
+
+impl Occurrence {
+    pub fn repeats(&self) -> bool {
+        self.original.is_some()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    One,
+    All,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Change {
+    pub title: String,
+    pub location: String,
+    pub notes: String,
+    pub time: OccurrenceTime,
+    pub calendar: CalendarId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

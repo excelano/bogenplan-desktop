@@ -21,12 +21,19 @@ twilight bands drawn behind them and the present moment marked. Choosing an
 event shows its start and end as positions on the arc and in civil time, its
 length in spans and the eighth of the day it starts in.
 
-It writes one kind of event: a moment. Press and hold an empty part of a day and
+It creates one kind of event: a moment. Press and hold an empty part of a day and
 a line shows the reading at that point; keep still until it turns gold and let
 go, or double-click, and a sheet sets the moment a step at a time. Adding it saves
 a zero-length event with an alert at its start to the calendar you choose, so the
-alert reaches every device that has that calendar. Bogenplan never edits or
-deletes an event.
+alert reaches every device that has that calendar.
+
+Any event can be edited or deleted from its window: the title, location, notes,
+start and end, all-day or not, and the calendar it is in. For a repeating event
+Bogenplan asks whether the change is for that occurrence or the whole series; a
+whole series keeps its days, so moving one to another day is done to that
+occurrence. An edit rewrites only the fields it changes, so invitees, alarms and
+repeat rules stay as they were, and a change made elsewhere since the last sync
+is refused rather than overwritten.
 
 ## Install
 

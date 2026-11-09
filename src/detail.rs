@@ -9,7 +9,17 @@ use crate::display::Readout;
 use crate::glyph::Label;
 use crate::palette;
 
-pub fn show(ui: &mut Ui, occurrence: &Occurrence, calendar: Option<&Calendar>, readout: &Readout) {
+pub enum Action {
+    Edit,
+    Delete,
+}
+
+pub fn show(
+    ui: &mut Ui,
+    occurrence: &Occurrence,
+    calendar: Option<&Calendar>,
+    readout: &Readout,
+) -> Option<Action> {
     ui.label(
         RichText::new(&occurrence.title)
             .size(18.0)
@@ -85,6 +95,17 @@ pub fn show(ui: &mut Ui, occurrence: &Occurrence, calendar: Option<&Calendar>, r
             ui.label(text);
         }
     }
+    ui.add_space(12.0);
+    let mut action = None;
+    ui.horizontal(|ui| {
+        if ui.button("Edit").clicked() {
+            action = Some(Action::Edit);
+        }
+        if ui.button("Delete").clicked() {
+            action = Some(Action::Delete);
+        }
+    });
+    action
 }
 
 fn section(ui: &mut Ui, title: &str) {

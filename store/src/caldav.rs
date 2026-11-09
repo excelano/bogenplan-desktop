@@ -13,7 +13,8 @@ use libdav::caldav::{
     GetSupportedComponents,
 };
 use libdav::dav::{
-    FoundCollection, ListResources, PutResource, SyncCollection, WebDavClient, WebDavError,
+    Delete, FoundCollection, GetEtag, ListResources, PutResource, SyncCollection, WebDavClient,
+    WebDavError,
 };
 use libdav::names;
 use tower_http::auth::AddAuthorization;
@@ -261,7 +262,60 @@ impl Connection {
                 }
                 other => other.to_string(),
             })?;
-        Ok((href, response.etag))
+        let etag = match response.etag {
+            Some(etag) => Some(etag),
+            None => self.etag(&href).await,
+        };
+        Ok((href, etag))
+    }
+
+    pub async fn update(&self, href: &str, ics: String, etag: &str) -> Result<String, String> {
+        let response = self
+            .client
+            .request(PutResource::new(href).update(ics, "text/calendar; charset=utf-8", etag))
+            .await
+            .map_err(write_error)?;
+        Ok(match response.etag {
+            Some(etag) => etag,
+            None => self.etag(href).await.unwrap_or_default(),
+        })
+    }
+
+    pub async fn delete(&self, href: &str, etag: &str) -> Result<(), String> {
+        self.client
+            .request(Delete::new(href).with_etag(etag))
+            .await
+            .map(|_| ())
+            .map_err(write_error)
+    }
+
+    async fn etag(&self, href: &str) -> Option<String> {
+        self.client
+            .request(GetEtag::new(href))
+            .await
+            .ok()
+            .map(|response| response.etag)
+    }
+}
+
+fn write_error<E: std::fmt::Display>(error: WebDavError<E>) -> String {
+    match error {
+        WebDavError::BadStatusCode(StatusCode::FORBIDDEN) => {
+            "This calendar does not accept changes.".to_string()
+        }
+        WebDavError::BadStatusCode(StatusCode::PRECONDITION_FAILED) => {
+            "The event changed on the server since the last sync. Refresh and try again."
+                .to_string()
+        }
+        other => {
+            let text = other.to_string();
+            if text.contains("412") || text.to_ascii_lowercase().contains("precondition") {
+                "The event changed on the server since the last sync. Refresh and try again."
+                    .to_string()
+            } else {
+                text
+            }
+        }
     }
 }
 

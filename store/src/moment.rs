@@ -3,6 +3,8 @@
 
 use chrono::{DateTime, Utc};
 
+use crate::ics::{escape, fold};
+
 pub(crate) fn ics(uid: &str, at: DateTime<Utc>, title: &str, now: DateTime<Utc>) -> String {
     let stamp = |time: DateTime<Utc>| time.format("%Y%m%dT%H%M%SZ").to_string();
     let title = escape(title);
@@ -32,27 +34,6 @@ pub(crate) fn ics(uid: &str, at: DateTime<Utc>, title: &str, now: DateTime<Utc>)
     .map(|line| fold(line))
     .collect::<Vec<_>>()
     .join("\r\n")
-}
-
-fn escape(text: &str) -> String {
-    text.replace('\\', "\\\\")
-        .replace(';', "\\;")
-        .replace(',', "\\,")
-        .replace('\n', "\\n")
-}
-
-fn fold(line: &str) -> String {
-    let mut folded = String::new();
-    let mut width = 0;
-    for c in line.chars() {
-        if width + c.len_utf8() > 75 {
-            folded.push_str("\r\n ");
-            width = 1;
-        }
-        folded.push(c);
-        width += c.len_utf8();
-    }
-    folded
 }
 
 #[cfg(test)]

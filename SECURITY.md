@@ -16,8 +16,8 @@ supported.
 
 ## What this application is
 
-Bogenplan reads the calendars in a CalDAV account and adds zero-length events
-to one of them. It connects to the calendar server the user signs in to over
+Bogenplan reads the calendars in a CalDAV account, adds zero-length events to
+one of them, and edits or deletes events the user chooses. It connects to the calendar server the user signs in to over
 HTTPS, with the system's trusted certificates, and to nothing else: no
 telemetry, no update check, no account of its own. The place is typed in by the
 user and kept on this computer.

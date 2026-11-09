@@ -1,7 +1,9 @@
 // Author: David M. Anderson
 // Built with AI assistance (Claude, Anthropic)
 
-use bogenplan_store::{Calendar, CalendarId, CalendarSource, Occurrence, OccurrenceTime, Reply};
+use bogenplan_store::{
+    Calendar, CalendarId, CalendarSource, Change, Occurrence, OccurrenceTime, Reply, Scope,
+};
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc};
 use chrono_tz::America::Chicago;
 
@@ -136,6 +138,9 @@ fn day_events(day: NaiveDate) -> Vec<Occurrence> {
             Occurrence {
                 calendar: calendars[entry.calendar].id.clone(),
                 key: format!("{day} {}", entry.title),
+                href: String::new(),
+                uid: String::new(),
+                original: None,
                 title: entry.title.to_string(),
                 location: entry.location.map(str::to_string),
                 notes: entry.notes.map(str::to_string),
@@ -170,8 +175,20 @@ impl CalendarSource for Demo {
     }
 
     fn add_moment(&self, _: DateTime<Utc>, _: String, _: &CalendarId) -> Reply {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let _ = sender.send(Err("The demo has no calendar to add to.".to_string()));
-        receiver
+        refused("The demo has no calendar to add to.")
     }
+
+    fn change(&self, _: &Occurrence, _: Change, _: Scope) -> Reply {
+        refused("The demo's events cannot be changed.")
+    }
+
+    fn delete(&self, _: &Occurrence, _: Scope) -> Reply {
+        refused("The demo's events cannot be deleted.")
+    }
+}
+
+fn refused(reason: &str) -> Reply {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let _ = sender.send(Err(reason.to_string()));
+    receiver
 }
