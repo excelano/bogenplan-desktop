@@ -1,3 +1,9 @@
+bogenplan (0.2.0) unstable; urgency=medium
+
+  * Edit and delete events: title, time, place, notes and calendar, with this-one-or-all for repeating events
+
+ -- David M. Anderson <david.anderson@excelano.com>  Sun, 08 Nov 2026 18:58:11 -0600
+
 bogenplan (0.1.2) unstable; urgency=medium
 
   * Week view: day headings and the week strip line up with the day columns
