@@ -7,7 +7,7 @@ Section: utils
 Priority: optional
 Homepage: https://github.com/excelano/bogenplan-desktop
 Depends: libc6, libgcc-s1, libwayland-client0, libxkbcommon0, libxkbcommon-x11-0, libegl1, libvulkan1 | libgl1, libx11-6, libx11-xcb1, libxi6, libxcursor1, libxrandr2, ca-certificates, desktop-file-utils, hicolor-icon-theme
-Recommends: gnome-keyring, geoclue-2.0
+Recommends: gnome-keyring
 Description: Your calendars laid out on the Sun's arc
  Bogenplan shows the calendars you keep on iCloud or another CalDAV server
  in Bogenzeit: each day runs from one solar midnight to the next, sunrise

@@ -2,7 +2,6 @@
 // Built with AI assistance (Claude, Anthropic)
 
 use std::collections::HashMap;
-use std::sync::mpsc;
 use std::time::Duration;
 
 use bogenplan_store::{Calendar, CalendarSource, Occurrence, Status, Store};
@@ -53,8 +52,6 @@ pub struct App {
     settings: Settings,
     clock: Clock,
     first_weekday: Weekday,
-    locating: Option<mpsc::Receiver<Result<Place, String>>>,
-    locate_failure: Option<String>,
     today: i64,
     selection: i64,
     page: Option<(i64, usize)>,
@@ -81,7 +78,6 @@ impl App {
         if demo {
             settings = Settings {
                 place: Some(demo::PLACE),
-                locates_automatically: false,
                 ..Settings::default()
             };
         }
@@ -93,8 +89,6 @@ impl App {
                 system::clock()
             },
             first_weekday: first_weekday(),
-            locating: None,
-            locate_failure: None,
             today: 0,
             selection: 0,
             page: None,
@@ -120,9 +114,6 @@ impl App {
             #[cfg(feature = "screenshot")]
             screenshot: crate::screenshot::Screenshot::from_environment(),
         };
-        if app.settings.locates_automatically {
-            app.locate();
-        }
         if let Some(place) = app.settings.place {
             app.today = app.today_at(place);
             app.selection = opening.map_or(app.today, day_of);
@@ -168,11 +159,6 @@ impl App {
         bz::bz_date(instant(self.now()), place.longitude).days_since_epoch()
     }
 
-    fn locate(&mut self) {
-        self.locate_failure = None;
-        self.locating = Some(system::locate());
-    }
-
     fn readout(&self, place: Place) -> Readout {
         Readout {
             place,
@@ -209,30 +195,7 @@ impl App {
         self.probe = None;
     }
 
-    fn poll(&mut self, ctx: &egui::Context) {
-        if let Some(receiver) = &self.locating {
-            match receiver.try_recv() {
-                Ok(Ok(place)) => {
-                    let first = self.settings.place.is_none();
-                    self.settings.place = Some(place);
-                    self.latitude = format!("{:.4}", place.latitude);
-                    self.longitude = format!("{:.4}", place.longitude);
-                    self.locating = None;
-                    if first {
-                        self.today = self.today_at(place);
-                        self.selection = self.today;
-                    }
-                }
-                Ok(Err(error)) => {
-                    self.locate_failure = Some(error);
-                    self.locating = None;
-                }
-                Err(mpsc::TryRecvError::Empty) => {
-                    ctx.request_repaint_after(Duration::from_millis(250))
-                }
-                Err(mpsc::TryRecvError::Disconnected) => self.locating = None,
-            }
-        }
+    fn follow_today(&mut self) {
         if let Some(place) = self.settings.place {
             let today = self.today_at(place);
             if today != self.today {
@@ -776,25 +739,6 @@ impl App {
 
         section(ui, "Place");
         if !self.demo() {
-            if ui
-                .checkbox(
-                    &mut self.settings.locates_automatically,
-                    "Find it with Location Services",
-                )
-                .changed()
-                && self.settings.locates_automatically
-            {
-                self.locate();
-            }
-            if self.locating.is_some() {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label("Finding where you are");
-                });
-            }
-            if let Some(failure) = &self.locate_failure {
-                note(ui, failure);
-            }
             self.coordinates(ui);
         } else if let Some(place) = self.settings.place {
             ui.label(format!("{:.2}, {:.2}", place.latitude, place.longitude));
@@ -838,7 +782,6 @@ impl App {
                 latitude,
                 longitude,
             });
-            self.settings.locates_automatically = false;
             if first {
                 self.today = self.today_at(Place {
                     latitude,
@@ -875,7 +818,11 @@ impl App {
                     ui.set_max_width(440.0);
                     ui.label(RichText::new(message).color(palette::LABEL));
                     ui.add_space(16.0);
-                    content(self, ui);
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width().min(440.0), 0.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| content(self, ui),
+                    );
                 });
             });
     }
@@ -884,7 +831,7 @@ impl App {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        self.poll(&ctx);
+        self.follow_today();
         let calendars = self.source.calendars().calendars();
         let before = self.settings.clone();
 
@@ -911,20 +858,8 @@ impl eframe::App for App {
             self.gate(
                 ui,
                 "Where you are",
-                "Solar noon, sunrise and sunset depend on where you are. Bogenplan can ask Location Services for your approximate place, or you can enter it.",
-                |app, ui| {
-                    if app.locating.is_some() {
-                        ui.spinner();
-                    } else if ui.button("Use Location Services").clicked() {
-                        app.settings.locates_automatically = true;
-                        app.locate();
-                    }
-                    if let Some(failure) = &app.locate_failure {
-                        note(ui, failure);
-                    }
-                    ui.add_space(12.0);
-                    app.coordinates(ui);
-                },
+                "Solar noon, sunrise and sunset depend on where you are.",
+                |app, ui| app.coordinates(ui),
             );
         }
         self.windows(&ctx, self.settings.place, &calendars);

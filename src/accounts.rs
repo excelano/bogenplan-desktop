@@ -86,7 +86,7 @@ impl SignIn {
         ui.horizontal(|ui| {
             let ready = !self.server.trim().is_empty()
                 && !self.username.trim().is_empty()
-                && !self.password.is_empty();
+                && !self.password.trim().is_empty();
             if ui
                 .add_enabled(
                     ready && self.pending.is_none(),
@@ -98,7 +98,7 @@ impl SignIn {
                 self.pending = Some(store.sign_in(
                     self.server.trim().to_string(),
                     self.username.trim().to_string(),
-                    self.password.clone(),
+                    self.password.trim().to_string(),
                 ));
             }
             if self.pending.is_some() {

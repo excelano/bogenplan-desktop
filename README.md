@@ -56,9 +56,8 @@ Apple Account password is refused by the server and should not be used. The
 password goes into the desktop keyring under `service=bogenplan`, so an entry
 made with `secret-tool` works as well.
 
-Solar noon, sunrise and sunset depend on where you are. Bogenplan asks GNOME's
-Location Services through GeoClue for an approximate place, or you can enter
-latitude and longitude in Settings.
+Solar noon, sunrise and sunset depend on where you are, so Bogenplan asks for
+your latitude and longitude on first run; Settings changes them later.
 
 ## Privacy
 

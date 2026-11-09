@@ -21,7 +21,6 @@ pub struct Settings {
     pub points_per_span: f32,
     pub hidden_calendars: BTreeSet<String>,
     pub moment_calendar: Option<String>,
-    pub locates_automatically: bool,
     pub place: Option<Place>,
 }
 
@@ -34,7 +33,6 @@ impl Default for Settings {
             points_per_span: STANDARD_POINTS_PER_SPAN,
             hidden_calendars: BTreeSet::new(),
             moment_calendar: None,
-            locates_automatically: true,
             place: None,
         }
     }

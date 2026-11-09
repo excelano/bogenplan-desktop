@@ -547,7 +547,6 @@ dependencies = [
  "chrono-tz",
  "eframe",
  "egui_extras",
- "futures-util",
  "jiff",
  "png",
  "serde",

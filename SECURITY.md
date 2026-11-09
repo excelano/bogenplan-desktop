@@ -19,8 +19,8 @@ supported.
 Bogenplan reads the calendars in a CalDAV account and adds zero-length events
 to one of them. It connects to the calendar server the user signs in to over
 HTTPS, with the system's trusted certificates, and to nothing else: no
-telemetry, no update check, no account of its own. On Linux it asks GeoClue for
-an approximate location over the system bus, which the user can decline.
+telemetry, no update check, no account of its own. The place is typed in by the
+user and kept on this computer.
 
 Calendar data arrives from the server as iCalendar text, parsed by the
 `icalendar` and `rrule` crates and by the code in `store/src`. A malformed or
