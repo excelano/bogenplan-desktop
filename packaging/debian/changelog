@@ -1,3 +1,9 @@
+bogenplan (0.1.1) unstable; urgency=medium
+
+  * Sign-in trims the password a paste brought a line break into; the place is typed in, with no GeoClue lookup; first-run forms sit in a centred column
+
+ -- David M. Anderson <david.anderson@excelano.com>  Sun, 08 Nov 2026 18:26:22 -0600
+
 bogenplan (0.1.0) unstable; urgency=medium
 
   * First release for the Linux desktop
