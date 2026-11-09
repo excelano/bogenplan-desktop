@@ -1,3 +1,9 @@
+bogenplan (0.2.3) unstable; urgency=medium
+
+  * Time fields follow the clock setting: 12-hour with AM and PM, or 24-hour
+
+ -- David M. Anderson <david.anderson@excelano.com>  Sun, 08 Nov 2026 19:26:39 -0600
+
 bogenplan (0.2.2) unstable; urgency=medium
 
   * Press and hold: the line shows however the pointer drifts while pressing; it arms only when held still
