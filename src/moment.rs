@@ -4,11 +4,13 @@
 use bogenplan_store::{Calendar, Reply};
 use chrono::{DateTime, Local, NaiveTime, TimeZone, Timelike, Utc};
 use eframe::egui::{
-    self, Align, CornerRadius, DragValue, Layout, RichText, Sense, Stroke, TextEdit, Ui, vec2,
+    self, Align, CornerRadius, Layout, RichText, Sense, Stroke, TextEdit, Ui, vec2,
 };
 
 use crate::axis::{DayAxis, LENGTH};
+use crate::civil::Clock;
 use crate::display::{Readout, Scale};
+use crate::fields;
 use crate::glyph::Label;
 use crate::palette::{self, with_opacity};
 use crate::time::seconds;
@@ -89,7 +91,7 @@ impl Draft {
             ui.add_space(6.0);
         }
         if self.sets_civil_time && readout.shows_civil_time {
-            self.civil(ui);
+            self.civil(ui, readout.clock);
         } else {
             self.dial(ui, readout);
         }
@@ -223,24 +225,12 @@ impl Draft {
         }
     }
 
-    fn civil(&mut self, ui: &mut Ui) {
+    fn civil(&mut self, ui: &mut Ui, clock: Clock) {
         let local = self.instant.with_timezone(&Local);
         let (mut hour, mut minute) = (local.hour(), local.minute());
         ui.horizontal(|ui| {
             ui.label("Time");
-            let changed = ui
-                .add(
-                    DragValue::new(&mut hour)
-                        .range(0..=23)
-                        .custom_formatter(|n, _| format!("{n:02}")),
-                )
-                .changed()
-                | ui.add(
-                    DragValue::new(&mut minute)
-                        .range(0..=59)
-                        .custom_formatter(|n, _| format!("{n:02}")),
-                )
-                .changed();
+            let changed = fields::time(ui, clock, &mut hour, &mut minute);
             if changed
                 && let Some(time) = NaiveTime::from_hms_opt(hour, minute, 0)
                 && let Some(picked) = Local

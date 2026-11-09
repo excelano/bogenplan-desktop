@@ -637,9 +637,10 @@ impl App {
     }
 
     fn change_windows(&mut self, ctx: &egui::Context, calendars: &[Calendar]) {
+        let clock = self.clock;
         if let Some(editor) = self.editor.as_mut() {
             let response = egui::Modal::new(egui::Id::new("edit event"))
-                .show(ctx, |ui| editor.show(ui, calendars));
+                .show(ctx, |ui| editor.show(ui, calendars, clock));
             match response.inner {
                 editor::Edited::Save(change, scope) => {
                     let reply = self

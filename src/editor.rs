@@ -4,9 +4,11 @@
 use std::sync::mpsc::TryRecvError;
 
 use bogenplan_store::{Calendar, CalendarId, Change, Occurrence, OccurrenceTime, Reply, Scope};
-use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveTime, TimeZone, Timelike, Utc};
-use eframe::egui::{self, Align, DragValue, Layout, RichText, TextEdit, Ui};
+use chrono::{DateTime, Duration, Local, NaiveDate, NaiveTime, TimeZone, Timelike, Utc};
+use eframe::egui::{self, Align, Layout, RichText, TextEdit, Ui};
 
+use crate::civil::Clock;
+use crate::fields;
 use crate::palette;
 
 pub enum Edited {
@@ -152,7 +154,7 @@ impl Editor {
         })
     }
 
-    pub fn show(&mut self, ui: &mut Ui, calendars: &[Calendar]) -> Edited {
+    pub fn show(&mut self, ui: &mut Ui, calendars: &[Calendar], clock: Clock) -> Edited {
         if self.pending.poll(ui) {
             return Edited::Closed;
         }
@@ -175,10 +177,10 @@ impl Editor {
                     ui.checkbox(&mut self.all_day, "All day");
                     ui.end_row();
                     ui.label("Starts");
-                    moment_field(ui, "start", &mut self.start, self.all_day);
+                    moment_field(ui, "start", &mut self.start, self.all_day, clock);
                     ui.end_row();
                     ui.label("Ends");
-                    moment_field(ui, "end", &mut self.end, self.all_day);
+                    moment_field(ui, "end", &mut self.end, self.all_day, clock);
                     ui.end_row();
                     ui.label("Calendar");
                     calendar_field(ui, calendars, &mut self.calendar);
@@ -308,39 +310,17 @@ impl Deletion {
     }
 }
 
-fn moment_field(ui: &mut Ui, id: &str, value: &mut (NaiveDate, u32, u32), all_day: bool) {
+fn moment_field(
+    ui: &mut Ui,
+    id: &str,
+    value: &mut (NaiveDate, u32, u32),
+    all_day: bool,
+    clock: Clock,
+) {
     ui.horizontal(|ui| {
-        let date = &mut value.0;
-        let mut picked =
-            jiff::civil::date(date.year() as i16, date.month() as i8, date.day() as i8);
-        let before = picked;
-        ui.add(
-            egui_extras::DatePickerButton::new(&mut picked)
-                .id_salt(id)
-                .format("%a %-d %b %Y")
-                .calendar_week(false),
-        );
-        if picked != before
-            && let Some(chosen) = NaiveDate::from_ymd_opt(
-                i32::from(picked.year()),
-                picked.month() as u32,
-                picked.day() as u32,
-            )
-        {
-            *date = chosen;
-        }
+        fields::date(ui, id, &mut value.0);
         if !all_day {
-            ui.add(
-                DragValue::new(&mut value.1)
-                    .range(0..=23)
-                    .custom_formatter(|n, _| format!("{n:02}")),
-            );
-            ui.label(":");
-            ui.add(
-                DragValue::new(&mut value.2)
-                    .range(0..=59)
-                    .custom_formatter(|n, _| format!("{n:02}")),
-            );
+            fields::time(ui, clock, &mut value.1, &mut value.2);
         }
     });
 }
