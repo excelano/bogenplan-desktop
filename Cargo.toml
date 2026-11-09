@@ -4,7 +4,7 @@ members = ["store"]
 [package]
 name = "bogenplan"
 description = "A calendar laid out on the Sun's arc"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["David M. Anderson"]
 license = "MIT"
