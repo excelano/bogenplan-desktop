@@ -329,8 +329,24 @@ fn base_uri(server: &str) -> Result<Uri, String> {
     } else {
         format!("https://{server}")
     };
-    url.parse()
-        .map_err(|_| format!("{server} is not a server address"))
+    let uri: Uri = url
+        .parse()
+        .map_err(|_| format!("{server} is not a server address"))?;
+    if uri.scheme_str() == Some("http") && !is_loopback(uri.host().unwrap_or_default()) {
+        return Err(format!(
+            "{server} would send the password unencrypted; use https://"
+        ));
+    }
+    Ok(uri)
+}
+
+fn is_loopback(host: &str) -> bool {
+    host == "localhost"
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
 }
 
 fn http(username: &str, password: &str) -> Result<Http, String> {
@@ -389,5 +405,8 @@ mod tests {
             base_uri("http://localhost:5232/").unwrap(),
             "http://localhost:5232/"
         );
+        assert!(base_uri("http://127.0.0.1:5232/").is_ok());
+        assert!(base_uri("http://[::1]:5232/").is_ok());
+        assert!(base_uri("http://caldav.example.com/").is_err());
     }
 }

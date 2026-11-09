@@ -3,6 +3,7 @@
 
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -69,7 +70,17 @@ impl Settings {
         if fs::create_dir_all(&dir).is_ok()
             && let Ok(text) = serde_json::to_string_pretty(self)
         {
-            let _ = fs::write(dir.join("settings.json"), text);
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create(true).truncate(true);
+            #[cfg(unix)]
+            std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+            let path = dir.join("settings.json");
+            let partial = path.with_extension("partial");
+            if let Ok(mut file) = options.open(&partial)
+                && file.write_all(text.as_bytes()).is_ok()
+            {
+                let _ = fs::rename(&partial, &path);
+            }
         }
     }
 }
