@@ -13,10 +13,10 @@ use libdav::caldav::{
     GetSupportedComponents,
 };
 use libdav::dav::{
-    Delete, FoundCollection, GetEtag, ListResources, PutResource, SyncCollection, WebDavClient,
-    WebDavError,
+    Delete, FindCollections, FindPropertyHrefs, FoundCollection, GetEtag, ListResources,
+    PutResource, SyncCollection, WebDavClient, WebDavError,
 };
-use libdav::names;
+use libdav::{PropertyName, names};
 use tower_http::auth::AddAuthorization;
 
 use crate::cache::{CalendarData, Resource};
@@ -27,6 +27,10 @@ type Http = AddAuthorization<Client<HttpsConnector<HttpConnector>, String>>;
 type Dav = CalDavClient<Http>;
 
 const FETCH_BATCH: usize = 100;
+
+const CALENDARSERVER: &str = "http://calendarserver.org/ns/";
+const SUBSCRIBED: PropertyName = PropertyName::new(CALENDARSERVER, "subscribed");
+const SOURCE: PropertyName = PropertyName::new(CALENDARSERVER, "source");
 
 pub(crate) struct Connection {
     client: Dav,
@@ -105,9 +109,42 @@ impl Connection {
             if !self.holds_events(&collection.href).await {
                 continue;
             }
-            calendars.push((self.calendar(&collection), collection.href));
+            calendars.push((self.calendar(&collection, false), collection.href));
         }
         Ok(calendars)
+    }
+
+    pub async fn subscriptions(&self, home: &Uri) -> Result<Vec<(Calendar, String)>, String> {
+        let found = self
+            .client
+            .request(
+                FindCollections::new(home.path())
+                    .with_collection_type(&SUBSCRIBED)
+                    .with_additional_properties(&[
+                        &names::DISPLAY_NAME,
+                        &names::CALENDAR_COLOUR,
+                        &names::CALENDAR_ORDER,
+                    ]),
+            )
+            .await
+            .map_err(|error| error.to_string())?
+            .collections;
+        Ok(found
+            .into_iter()
+            .map(|collection| (self.calendar(&collection, true), collection.href))
+            .collect())
+    }
+
+    pub async fn source(&self, subscription: &str) -> Result<String, String> {
+        self.client
+            .request(FindPropertyHrefs::new(subscription, &SOURCE))
+            .await
+            .map_err(|error| error.to_string())?
+            .hrefs
+            .into_iter()
+            .next()
+            .map(|source| source.to_string())
+            .ok_or_else(|| "the subscription has no address".to_string())
     }
 
     async fn holds_events(&self, href: &str) -> bool {
@@ -117,7 +154,7 @@ impl Connection {
         }
     }
 
-    fn calendar(&self, collection: &FoundCollection) -> Calendar {
+    fn calendar(&self, collection: &FoundCollection, read_only: bool) -> Calendar {
         let property = |name: &libdav::PropertyName| {
             collection
                 .properties
@@ -135,6 +172,7 @@ impl Connection {
             order: property(&names::CALENDAR_ORDER)
                 .and_then(|order| order.parse().ok())
                 .unwrap_or(0),
+            read_only,
         }
     }
 

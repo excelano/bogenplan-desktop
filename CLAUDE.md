@@ -7,7 +7,10 @@ excelano/bogenplan, the iPhone and iPad app, and follows that repository's
 only events it creates are moments, zero-length events with an alert at their
 start. It edits and deletes events by rewriting the fields it changes in the
 event's own iCalendar text (`store/src/edit.rs`), never regenerating it, and
-writes with If-Match on the cached etag.
+writes with If-Match on the cached etag. Calendars the account subscribes to
+(`cs:subscribed` in the calendar home) are read-only: `store/src/feed.rs` fetches
+each from its `cs:source` without credentials and over HTTPS only, at most
+hourly or on Sync Now, and the store refuses writes to them.
 
 ## Layout
 
@@ -44,5 +47,6 @@ The day view gives every span the same height, from the starting ○ to the endi
 positions are the floor of the signed value. ☉, ○, △ and ▽ are drawn by
 `glyph.rs`, never set in a font, so no glyph characters in UI strings. The
 window is the night palette whatever the desktop theme, because the sky is the
-content. Calendar data and the place stay on the machine; the only connection
-is to the calendar server. Don't commit, push or publish unless David asks.
+content. Calendar data and the place stay on the machine; the only connections
+are to the calendar server and to the publishers of the account's subscribed
+calendars. Don't commit, push or publish unless David asks.

@@ -14,6 +14,8 @@ pub struct Calendar {
     pub color: [u8; 3],
     pub account: String,
     pub order: i32,
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

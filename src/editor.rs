@@ -333,7 +333,7 @@ fn calendar_field(ui: &mut Ui, calendars: &[Calendar], chosen: &mut CalendarId) 
     egui::ComboBox::from_id_salt("edit calendar")
         .selected_text(title)
         .show_ui(ui, |ui| {
-            for calendar in calendars {
+            for calendar in calendars.iter().filter(|calendar| !calendar.read_only) {
                 ui.selectable_value(chosen, calendar.id.clone(), &calendar.title);
             }
         });

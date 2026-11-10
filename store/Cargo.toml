@@ -7,14 +7,15 @@ publish = false
 [dependencies]
 libdav = "0.11"
 http = "1"
+http-body-util = "0.1"
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "native-tokio", "ring", "tls12", "logging"] }
 hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1", "tokio"] }
 tower-http = { version = "0.6", features = ["auth"] }
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "time"] }
 oo7 = "0.5"
 icalendar = "0.17"
 rrule = "0.14"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -8,6 +8,7 @@ mod caldav;
 mod credentials;
 mod edit;
 mod expand;
+mod feed;
 mod ics;
 mod model;
 mod moment;
@@ -26,8 +27,10 @@ pub use model::{Account, Calendar, CalendarId, Change, Occurrence, OccurrenceTim
 use cache::{CalendarData, Resource};
 use caldav::Connection;
 use credentials::Credentials;
+use feed::Feeds;
 
 const SYNC_EVERY: Duration = Duration::from_secs(300);
+const FETCH_FEEDS_EVERY: chrono::Duration = chrono::Duration::hours(1);
 
 pub type Reply = reply::Receiver<Result<(), String>>;
 
@@ -100,6 +103,7 @@ impl Store {
             path: cache_dir.join("calendars.json"),
             calendars: Vec::new(),
             accounts: Vec::new(),
+            feeds: Feeds::new(),
         };
         std::thread::Builder::new()
             .name("calendar sync".into())
@@ -167,7 +171,11 @@ impl Store {
             for instance in expand::instances(events, from, to) {
                 found.push(Occurrence {
                     calendar: calendar.clone(),
-                    key: format!("{href}@{}", instance.time.start_instant().timestamp()),
+                    key: format!(
+                        "{href}#{}@{}",
+                        instance.event.uid,
+                        instance.time.start_instant().timestamp()
+                    ),
                     href: href.clone(),
                     uid: instance.event.uid.clone(),
                     original: instance.original,
@@ -246,11 +254,18 @@ impl CalendarSource for Store {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Feeding {
+    Now,
+    WhenDue,
+}
+
 struct Worker {
     shared: Arc<Shared>,
     path: PathBuf,
     calendars: Vec<CalendarData>,
     accounts: Vec<Credentials>,
+    feeds: Result<Feeds, String>,
 }
 
 impl Worker {
@@ -260,21 +275,21 @@ impl Worker {
             .await
             .unwrap_or_default();
         self.publish();
-        self.sync().await;
+        self.sync(Feeding::WhenDue).await;
         loop {
             tokio::select! {
                 command = commands.recv() => match command {
                     None => return,
                     Some(command) => self.handle(command).await,
                 },
-                () = tokio::time::sleep(SYNC_EVERY) => self.sync().await,
+                () = tokio::time::sleep(SYNC_EVERY) => self.sync(Feeding::WhenDue).await,
             }
         }
     }
 
     async fn handle(&mut self, command: Command) {
         match command {
-            Command::Refresh => self.sync().await,
+            Command::Refresh => self.sync(Feeding::Now).await,
             Command::AddMoment {
                 at,
                 title,
@@ -306,7 +321,7 @@ impl Worker {
                 let succeeded = result.is_ok();
                 let _ = reply.send(result);
                 if succeeded {
-                    self.sync().await;
+                    self.sync(Feeding::WhenDue).await;
                 }
             }
             Command::SignOut { account } => {
@@ -314,7 +329,7 @@ impl Worker {
                 let key = credentials::account_key(&account.server, &account.username);
                 self.calendars.retain(|data| data.calendar.account != key);
                 self.save();
-                self.sync().await;
+                self.sync(Feeding::WhenDue).await;
             }
         }
     }
@@ -324,7 +339,7 @@ impl Worker {
         (self.shared.notify)();
     }
 
-    async fn sync(&mut self) {
+    async fn sync(&mut self, feeding: Feeding) {
         self.set_status(Status::Syncing);
         self.accounts = match credentials::all().await {
             Ok(accounts) => accounts,
@@ -345,9 +360,7 @@ impl Worker {
             .retain(|data| keys.contains(&data.calendar.account));
         let mut failures = Vec::new();
         for credentials in self.accounts.clone() {
-            if let Err(error) = self.sync_account(&credentials).await {
-                failures.push(error);
-            }
+            failures.extend(self.sync_account(&credentials, feeding).await);
         }
         self.save();
         self.publish();
@@ -358,39 +371,121 @@ impl Worker {
         });
     }
 
-    async fn sync_account(&mut self, credentials: &Credentials) -> Result<(), String> {
-        let (connection, home) = Connection::open(credentials).await?;
-        let found = connection.calendars(&home).await?;
+    async fn sync_account(&mut self, credentials: &Credentials, feeding: Feeding) -> Vec<String> {
         let account = credentials.key();
-        let hrefs: HashSet<String> = found.iter().map(|(_, href)| href.clone()).collect();
-        self.calendars
-            .retain(|data| data.calendar.account != account || hrefs.contains(&data.href));
-        let mut result = Ok(());
+        let opened = Connection::open(credentials).await;
+        let (connection, home) = match opened {
+            Ok(opened) => opened,
+            Err(error) => return vec![error],
+        };
+        let found = match connection.calendars(&home).await {
+            Ok(found) => found,
+            Err(error) => return vec![format!("{account}: {error}")],
+        };
+        let mut failures = Vec::new();
+        let subscribed = match connection.subscriptions(&home).await {
+            Ok(subscribed) => Some(subscribed),
+            Err(error) => {
+                failures.push(format!("{account}: subscriptions: {error}"));
+                None
+            }
+        };
+        let hrefs: HashSet<String> = found
+            .iter()
+            .chain(subscribed.iter().flatten())
+            .map(|(_, href)| href.clone())
+            .collect();
+        self.calendars.retain(|data| {
+            data.calendar.account != account
+                || hrefs.contains(&data.href)
+                || (subscribed.is_none() && data.calendar.read_only)
+        });
         for (calendar, href) in found {
-            let index = self
-                .calendars
-                .iter()
-                .position(|data| data.calendar.account == account && data.href == href);
+            let index = self.index_of(&account, &href);
             let previous = index.map(|index| self.calendars[index].clone());
             match connection.sync(calendar, href, previous).await {
                 Ok(data) => {
-                    match index {
-                        Some(index) => self.calendars[index] = data,
-                        None => self.calendars.push(data),
-                    }
+                    self.keep(index, data);
                     self.publish();
                 }
-                Err(error) => result = Err(format!("{account}: {error}")),
+                Err(error) => failures.push(format!("{account}: {error}")),
             }
         }
-        result
+        for (calendar, href) in subscribed.into_iter().flatten() {
+            if let Err(error) = self.fetch_feed(&connection, calendar, href, feeding).await {
+                failures.push(error);
+            }
+        }
+        failures
+    }
+
+    fn index_of(&self, account: &str, href: &str) -> Option<usize> {
+        self.calendars
+            .iter()
+            .position(|data| data.calendar.account == account && data.href == href)
+    }
+
+    fn keep(&mut self, index: Option<usize>, data: CalendarData) {
+        match index {
+            Some(index) => self.calendars[index] = data,
+            None => self.calendars.push(data),
+        }
+    }
+
+    async fn fetch_feed(
+        &mut self,
+        connection: &Connection,
+        calendar: Calendar,
+        href: String,
+        feeding: Feeding,
+    ) -> Result<(), String> {
+        let index = self.index_of(&calendar.account, &href);
+        let mut data = index.map_or_else(
+            || CalendarData::new(calendar.clone(), href.clone()),
+            |index| self.calendars[index].clone(),
+        );
+        let title = calendar.title.clone();
+        data.calendar = calendar;
+        let now = Utc::now();
+        let due = feeding == Feeding::Now
+            || data
+                .fetched
+                .is_none_or(|fetched| now - fetched >= FETCH_FEEDS_EVERY);
+        let fetched = if due {
+            Some(self.feed(connection, &href).await)
+        } else {
+            None
+        };
+        if let Some(Ok(text)) = &fetched {
+            data.resources = [(href.clone(), Resource::new(String::new(), text.clone()))].into();
+            data.fetched = Some(now);
+        }
+        self.keep(index, data);
+        self.publish();
+        match fetched {
+            Some(Err(error)) => Err(format!("{title}: {error}")),
+            _ => Ok(()),
+        }
+    }
+
+    async fn feed(&self, connection: &Connection, href: &str) -> Result<String, String> {
+        let feeds = self.feeds.as_ref()?;
+        let source = connection.source(href).await?;
+        let text = feeds.fetch(&source).await?;
+        ics::parse(&text).map_err(|error| format!("the feed could not be read ({error})"))?;
+        Ok(text)
     }
 
     fn calendar_index(&self, calendar: &CalendarId) -> Result<usize, String> {
-        self.calendars
+        let index = self
+            .calendars
             .iter()
             .position(|data| &data.calendar.id == calendar)
-            .ok_or_else(|| "That calendar is no longer on the server.".to_string())
+            .ok_or_else(|| "That calendar is no longer on the server.".to_string())?;
+        if self.calendars[index].calendar.read_only {
+            return Err("That calendar is a subscription, which cannot be changed.".to_string());
+        }
+        Ok(index)
     }
 
     async fn connect(&self, index: usize) -> Result<Connection, String> {

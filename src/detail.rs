@@ -95,6 +95,9 @@ pub fn show(
             ui.label(text);
         }
     }
+    if calendar.is_some_and(|calendar| calendar.read_only) {
+        return None;
+    }
     ui.add_space(12.0);
     let mut action = None;
     ui.horizontal(|ui| {

@@ -106,6 +106,7 @@ fn calendar(index: usize, title: &str, color: [u8; 3]) -> Calendar {
         color,
         account: "Demo".to_string(),
         order: index as i32,
+        read_only: false,
     }
 }
 

@@ -189,10 +189,11 @@ impl App {
             return None;
         }
         let chosen = self.settings.moment_calendar.as_ref();
-        calendars
-            .iter()
+        let mut writable = calendars.iter().filter(|calendar| !calendar.read_only);
+        writable
+            .clone()
             .find(|calendar| Some(&calendar.id.0) == chosen)
-            .or_else(|| calendars.first())
+            .or_else(|| writable.next())
             .cloned()
     }
 
@@ -756,7 +757,7 @@ impl App {
                         .map_or("None".to_string(), |calendar| calendar.title.clone()),
                 )
                 .show_ui(ui, |ui| {
-                    for calendar in calendars {
+                    for calendar in calendars.iter().filter(|calendar| !calendar.read_only) {
                         let selected = chosen
                             .as_ref()
                             .is_some_and(|chosen| chosen.id == calendar.id);

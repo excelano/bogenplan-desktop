@@ -7,6 +7,7 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::ics::{self, Event};
@@ -18,6 +19,8 @@ pub(crate) struct CalendarData {
     pub href: String,
     pub sync_token: Option<String>,
     pub resources: BTreeMap<String, Resource>,
+    #[serde(default)]
+    pub fetched: Option<DateTime<Utc>>,
 }
 
 impl CalendarData {
@@ -27,6 +30,7 @@ impl CalendarData {
             href,
             sync_token: None,
             resources: BTreeMap::new(),
+            fetched: None,
         }
     }
 }

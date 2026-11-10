@@ -35,6 +35,12 @@ occurrence. An edit rewrites only the fields it changes, so invitees, alarms and
 repeat rules stay as they were, and a change made elsewhere since the last sync
 is refused rather than overwritten.
 
+Calendars the account subscribes to, such as a school's or a team's feed added
+in iCloud, appear beside the others with their names and colours. Their events
+can be read but not edited, and a moment cannot be added to one. Bogenplan
+fetches each feed from its publisher at most once an hour, or when Sync Now is
+pressed, and always over HTTPS.
+
 ## Install
 
 On Debian and Ubuntu, from the Excelano apt repository:
@@ -69,8 +75,10 @@ your latitude and longitude on first run; Settings changes them later.
 ## Privacy
 
 Events are cached in `~/.cache/bogenplan`, readable only by you, and the place
-and settings stay in `~/.config/bogenplan`. The only network connection is to
-the calendar server you sign in to.
+and settings stay in `~/.config/bogenplan`. Bogenplan connects to the calendar
+server you sign in to and, for each calendar the account subscribes to, to the
+server that publishes it. A publisher learns your address and when the feed was
+fetched, and nothing else.
 
 ## The standard
 

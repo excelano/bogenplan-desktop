@@ -17,14 +17,18 @@ supported.
 ## What this application is
 
 Bogenplan reads the calendars in a CalDAV account, adds zero-length events to
-one of them, and edits or deletes events the user chooses. It connects to the calendar server the user signs in to over
-HTTPS, with the system's trusted certificates, and to nothing else. Plain HTTP
-is refused except to a server on this computer (localhost or a loopback
-address), so the password never crosses a network unencrypted. There is no
+one of them, and edits or deletes events the user chooses. It connects over
+HTTPS, with the system's trusted certificates, to the calendar server the user
+signs in to and to the publisher of each calendar the account subscribes to, and
+to nothing else. Plain HTTP to the calendar server is refused except to a server
+on this computer (localhost or a loopback address), so the password never
+crosses a network unencrypted. A subscribed feed is fetched without the
+password, and only over HTTPS: a `webcal://` or `http://` address is fetched as
+`https://`, and a redirect to plain HTTP is refused. There is no
 telemetry, no update check, no account of its own. The place is typed in by the
 user and kept on this computer.
 
-Calendar data arrives from the server as iCalendar text, parsed by the
+Calendar data arrives from the server and from subscribed feeds as iCalendar text, parsed by the
 `icalendar` and `rrule` crates and by the code in `store/src`. A malformed or
 hostile event is the input this application has to withstand, and a crash or
 hang on one is worth reporting.
