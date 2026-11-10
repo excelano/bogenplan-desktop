@@ -1,3 +1,9 @@
+bogenplan (0.4.0) unstable; urgency=medium
+
+  * Set an event's start and end in Bogenzeit, by steps or a typed reading, and type a moment's reading
+
+ -- David M. Anderson <david.anderson@excelano.com>  Tue, 10 Nov 2026 15:01:08 -0600
+
 bogenplan (0.3.0) unstable; urgency=medium
 
   * Show the calendars your iCloud account subscribes to, read-only, beside your own
