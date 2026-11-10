@@ -1,3 +1,9 @@
+bogenplan (0.3.0) unstable; urgency=medium
+
+  * Show the calendars your iCloud account subscribes to, read-only, beside your own
+
+ -- David M. Anderson <david.anderson@excelano.com>  Mon, 09 Nov 2026 18:27:02 -0600
+
 bogenplan (0.2.4) unstable; urgency=medium
 
   * A server address with plain http:// is refused unless the server is on this computer (localhost or a loopback address); use https:// so the password is never sent unencrypted
