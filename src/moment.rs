@@ -10,19 +10,20 @@ use eframe::egui::{
 use crate::axis::{DayAxis, LENGTH};
 use crate::civil::Clock;
 use crate::display::{Readout, Scale};
+use crate::entry;
 use crate::fields;
 use crate::glyph::Label;
 use crate::palette::{self, with_opacity};
 use crate::time::seconds;
 
 const POINTS_PER_STEP: f32 = 10.0;
+const DIAL_HEIGHT: f32 = 36.0;
 
 pub struct Draft {
     pub axis: DayAxis,
     pub instant: DateTime<Utc>,
     title: String,
     sets_civil_time: bool,
-    drag_start: Option<DateTime<Utc>>,
     pending: Option<Reply>,
     failure: Option<String>,
 }
@@ -41,7 +42,6 @@ impl Draft {
             instant: stepped(at, 0, &axis, readout),
             title: String::new(),
             sets_civil_time: false,
-            drag_start: None,
             pending: None,
             failure: None,
         }
@@ -93,7 +93,10 @@ impl Draft {
         if self.sets_civil_time && readout.shows_civil_time {
             self.civil(ui, readout.clock);
         } else {
-            self.dial(ui, readout);
+            entry::entry(ui, "moment", &mut self.instant, &self.axis, readout);
+            ui.add_space(4.0);
+            dial(ui, "moment dial", &mut self.instant, &self.axis, readout);
+            self.keys(ui, readout);
         }
         ui.add_space(10.0);
         let default_title = capitalized(&readout.spoken(&readout.position(self.instant)));
@@ -145,83 +148,21 @@ impl Draft {
         outcome
     }
 
-    fn dial(&mut self, ui: &mut Ui, readout: &Readout) {
-        ui.horizontal(|ui| {
-            if ui.button(" − ").on_hover_text("Earlier").clicked() {
-                self.step(-1, readout);
-            }
-            let width = ui.available_width() - 40.0;
-            let (rect, response) = ui.allocate_exact_size(vec2(width, 36.0), Sense::drag());
-            let painter = ui.painter_at(rect);
-            painter.rect_filled(
-                rect,
-                CornerRadius::same(18),
-                with_opacity(palette::LINE, 0.08),
-            );
-            let ticks = (rect.width() / POINTS_PER_STEP) as usize;
-            for i in 0..ticks {
-                let x = rect.left() + (i as f32 + 0.5) * POINTS_PER_STEP;
-                let long = i % 5 == 0;
-                let half = if long { 9.0 } else { 5.0 };
-                painter.vline(
-                    x,
-                    rect.center().y - half..=rect.center().y + half,
-                    Stroke::new(
-                        1.0,
-                        with_opacity(palette::LABEL, if long { 0.8 } else { 0.35 }),
-                    ),
-                );
-            }
-            if response.drag_started() {
-                self.drag_start = Some(self.instant);
-            }
-            if let Some(start) = self.drag_start
-                && response.dragged()
-            {
-                let total = response.total_drag_delta().map_or(0.0, |delta| delta.x);
-                self.instant = stepped(
-                    start,
-                    (total / POINTS_PER_STEP).round() as i64,
-                    &self.axis,
-                    readout,
-                );
-            }
-            if response.drag_stopped() {
-                self.drag_start = None;
-            }
-            if response.hovered() {
-                let notches: i64 = ui.input(|i| {
-                    i.events
-                        .iter()
-                        .filter_map(|event| match event {
-                            egui::Event::MouseWheel { delta, .. } => {
-                                Some((delta.y + delta.x).signum() as i64)
-                            }
-                            _ => None,
-                        })
-                        .sum()
-                });
-                if notches != 0 {
-                    self.step(notches, readout);
-                }
-            }
-            if ui.button(" + ").on_hover_text("Later").clicked() {
-                self.step(1, readout);
-            }
-        });
-        let keys = ui.input(|i| {
+    fn keys(&mut self, ui: &Ui, readout: &Readout) {
+        if ui.memory(|memory| memory.focused().is_some()) {
+            return;
+        }
+        let (earlier, later) = ui.input(|i| {
             (
                 i.key_pressed(egui::Key::ArrowLeft),
                 i.key_pressed(egui::Key::ArrowRight),
             )
         });
-        if !ui.memory(|memory| memory.focused().is_some()) {
-            if keys.0 {
-                self.step(-1, readout);
-            }
-            if keys.1 {
-                self.step(1, readout);
-            }
+        if earlier {
+            self.step(-1, readout);
+        }
+        if later {
+            self.step(1, readout);
         }
     }
 
@@ -251,6 +192,82 @@ impl Draft {
     }
 }
 
+pub fn dial(
+    ui: &mut Ui,
+    id: &str,
+    at: &mut DateTime<Utc>,
+    axis: &DayAxis,
+    readout: &Readout,
+) -> bool {
+    let before = *at;
+    let id = ui.id().with(id);
+    let row = vec2(ui.available_width(), DIAL_HEIGHT);
+    ui.allocate_ui_with_layout(row, Layout::left_to_right(Align::Center), |ui| {
+        if ui.button(" − ").on_hover_text("Earlier").clicked() {
+            *at = stepped(*at, -1, axis, readout);
+        }
+        let width = ui.available_width() - 40.0;
+        let (rect, response) = ui.allocate_exact_size(vec2(width, DIAL_HEIGHT), Sense::drag());
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(
+            rect,
+            CornerRadius::same(18),
+            with_opacity(palette::LINE, 0.08),
+        );
+        let ticks = (rect.width() / POINTS_PER_STEP) as usize;
+        for i in 0..ticks {
+            let x = rect.left() + (i as f32 + 0.5) * POINTS_PER_STEP;
+            let long = i % 5 == 0;
+            let half = if long { 9.0 } else { 5.0 };
+            painter.vline(
+                x,
+                rect.center().y - half..=rect.center().y + half,
+                Stroke::new(
+                    1.0,
+                    with_opacity(palette::LABEL, if long { 0.8 } else { 0.35 }),
+                ),
+            );
+        }
+        if response.drag_started() {
+            ui.data_mut(|data| data.insert_temp(id, *at));
+        }
+        if let Some(start) = ui.data(|data| data.get_temp::<DateTime<Utc>>(id))
+            && response.dragged()
+        {
+            let total = response.total_drag_delta().map_or(0.0, |delta| delta.x);
+            *at = stepped(
+                start,
+                (total / POINTS_PER_STEP).round() as i64,
+                axis,
+                readout,
+            );
+        }
+        if response.drag_stopped() {
+            ui.data_mut(|data| data.remove::<DateTime<Utc>>(id));
+        }
+        if response.hovered() {
+            let notches: i64 = ui.input(|i| {
+                i.events
+                    .iter()
+                    .filter_map(|event| match event {
+                        egui::Event::MouseWheel { delta, .. } => {
+                            Some((delta.y + delta.x).signum() as i64)
+                        }
+                        _ => None,
+                    })
+                    .sum()
+            });
+            if notches != 0 {
+                *at = stepped(*at, notches, axis, readout);
+            }
+        }
+        if ui.button(" + ").on_hover_text("Later").clicked() {
+            *at = stepped(*at, 1, axis, readout);
+        }
+    });
+    *at != before
+}
+
 pub fn stepped(at: DateTime<Utc>, steps: i64, axis: &DayAxis, readout: &Readout) -> DateTime<Utc> {
     let reading = readout.reading(at);
     if readout.scale == Scale::Spans && reading.place_in_day().is_some() {
@@ -265,7 +282,7 @@ pub fn stepped(at: DateTime<Utc>, steps: i64, axis: &DayAxis, readout: &Readout)
     whole_second(target.clamp(axis.start(), axis.end() - seconds(step)))
 }
 
-fn whole_second(at: DateTime<Utc>) -> DateTime<Utc> {
+pub fn whole_second(at: DateTime<Utc>) -> DateTime<Utc> {
     let micros = at.timestamp_micros() + 1_000;
     let seconds = micros.div_euclid(1_000_000) + i64::from(micros.rem_euclid(1_000_000) != 0);
     DateTime::from_timestamp(seconds, 0).unwrap_or(at)

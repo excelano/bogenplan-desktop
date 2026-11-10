@@ -14,6 +14,7 @@ mod demo;
 mod detail;
 mod display;
 mod editor;
+mod entry;
 mod fields;
 mod glyph;
 mod layout;

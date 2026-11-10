@@ -23,12 +23,15 @@ length in spans and the eighth of the day it starts in.
 
 It creates one kind of event: a moment. Press and hold an empty part of a day and
 a line shows the reading at that point; keep still until it turns gold and let
-go, or double-click, and a sheet sets the moment a step at a time. Adding it saves
+go, or double-click, and a sheet sets the moment a step at a time or from a typed
+reading, a number before or after ○, △, ☉ or ▽. Adding it saves
 a zero-length event with an alert at its start to the calendar you choose, so the
 alert reaches every device that has that calendar.
 
 Any event can be edited or deleted from its window: the title, location, notes,
-start and end, all-day or not, and the calendar it is in. For a repeating event
+start and end, all-day or not, and the calendar it is in. Start and end are set
+in Bogenzeit, with the same steps and typed readings as a moment, or in civil
+time when civil time is shown. For a repeating event
 Bogenplan asks whether the change is for that occurrence or the whole series; a
 whole series keeps its days, so moving one to another day is done to that
 occurrence. An edit rewrites only the fields it changes, so invitees, alarms and

@@ -33,6 +33,13 @@ impl DayAxis {
         }
     }
 
+    pub fn containing(at: DateTime<Utc>, place: Place) -> DayAxis {
+        DayAxis {
+            solar: bz::Reading::at(instant(at), place.latitude, place.longitude).day,
+            place,
+        }
+    }
+
     pub fn start(&self) -> DateTime<Utc> {
         utc(self.solar.midnight_start)
     }

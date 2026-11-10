@@ -7,8 +7,12 @@ use bogenplan_store::{Calendar, CalendarId, Change, Occurrence, OccurrenceTime, 
 use chrono::{DateTime, Duration, Local, NaiveDate, NaiveTime, TimeZone, Timelike, Utc};
 use eframe::egui::{self, Align, Layout, RichText, TextEdit, Ui};
 
-use crate::civil::Clock;
+use crate::axis::DayAxis;
+use crate::civil::{Clock, date_of, day_of, naive};
+use crate::display::Readout;
+use crate::entry;
 use crate::fields;
+use crate::moment;
 use crate::palette;
 
 pub enum Edited {
@@ -76,8 +80,9 @@ pub struct Editor {
     location: String,
     notes: String,
     all_day: bool,
-    start: (NaiveDate, u32, u32),
-    end: (NaiveDate, u32, u32),
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+    sets_civil_time: bool,
     calendar: CalendarId,
     asking: bool,
     pending: Pending,
@@ -85,17 +90,13 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(occurrence: Occurrence) -> Editor {
-        let local = |at: DateTime<Utc>| {
-            let at = at.with_timezone(&Local);
-            (at.date_naive(), at.hour(), at.minute())
-        };
         let (all_day, start, end) = match occurrence.time {
             OccurrenceTime::AllDay { start, end } => (
                 true,
-                (start, 9, 0),
-                ((end - Duration::days(1)).max(start), 10, 0),
+                local_instant(start, 9, 0),
+                local_instant((end - Duration::days(1)).max(start), 10, 0),
             ),
-            OccurrenceTime::Timed { start, end } => (false, local(start), local(end)),
+            OccurrenceTime::Timed { start, end } => (false, start, end),
         };
         Editor {
             title: occurrence.title.clone(),
@@ -104,6 +105,7 @@ impl Editor {
             all_day,
             start,
             end,
+            sets_civil_time: false,
             calendar: occurrence.calendar.clone(),
             asking: false,
             pending: Pending::new(),
@@ -118,27 +120,22 @@ impl Editor {
 
     fn time(&self) -> Result<OccurrenceTime, String> {
         if self.all_day {
-            if self.end.0 < self.start.0 {
+            let (start, end) = (local_date(self.start), local_date(self.end));
+            if end < start {
                 return Err("The event ends before it starts.".to_string());
             }
             return Ok(OccurrenceTime::AllDay {
-                start: self.start.0,
-                end: self.end.0 + Duration::days(1),
+                start,
+                end: end + Duration::days(1),
             });
         }
-        let instant = |(date, hour, minute): (NaiveDate, u32, u32)| {
-            let naive = date.and_time(NaiveTime::from_hms_opt(hour, minute, 0).unwrap_or_default());
-            Local
-                .from_local_datetime(&naive)
-                .earliest()
-                .unwrap_or_else(|| Local.from_utc_datetime(&naive))
-                .with_timezone(&Utc)
-        };
-        let (start, end) = (instant(self.start), instant(self.end));
-        if end < start {
+        if self.end < self.start {
             return Err("The event ends before it starts.".to_string());
         }
-        Ok(OccurrenceTime::Timed { start, end })
+        Ok(OccurrenceTime::Timed {
+            start: self.start,
+            end: self.end,
+        })
     }
 
     fn change(&self) -> Result<Change, String> {
@@ -154,7 +151,7 @@ impl Editor {
         })
     }
 
-    pub fn show(&mut self, ui: &mut Ui, calendars: &[Calendar], clock: Clock) -> Edited {
+    pub fn show(&mut self, ui: &mut Ui, calendars: &[Calendar], readout: &Readout) -> Edited {
         if self.pending.poll(ui) {
             return Edited::Closed;
         }
@@ -176,12 +173,29 @@ impl Editor {
                     ui.label("");
                     ui.checkbox(&mut self.all_day, "All day");
                     ui.end_row();
-                    ui.label("Starts");
-                    moment_field(ui, "start", &mut self.start, self.all_day, clock);
-                    ui.end_row();
-                    ui.label("Ends");
-                    moment_field(ui, "end", &mut self.end, self.all_day, clock);
-                    ui.end_row();
+                    let timed = !self.all_day;
+                    if timed && readout.shows_civil_time {
+                        ui.label("");
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(&mut self.sets_civil_time, false, "Bogenzeit");
+                            ui.selectable_value(&mut self.sets_civil_time, true, "Civil time");
+                        });
+                        ui.end_row();
+                    }
+                    let bogenzeit = timed && !(self.sets_civil_time && readout.shows_civil_time);
+                    let clock = timed.then_some(readout.clock);
+                    for (title, id, at) in [
+                        ("Starts", "start", &mut self.start),
+                        ("Ends", "end", &mut self.end),
+                    ] {
+                        ui.label(title);
+                        if bogenzeit {
+                            bogenzeit_field(ui, id, at, readout);
+                        } else {
+                            civil_field(ui, id, at, clock);
+                        }
+                        ui.end_row();
+                    }
                     ui.label("Calendar");
                     calendar_field(ui, calendars, &mut self.calendar);
                     ui.end_row();
@@ -310,19 +324,58 @@ impl Deletion {
     }
 }
 
-fn moment_field(
-    ui: &mut Ui,
-    id: &str,
-    value: &mut (NaiveDate, u32, u32),
-    all_day: bool,
-    clock: Clock,
-) {
+fn bogenzeit_field(ui: &mut Ui, id: &str, at: &mut DateTime<Utc>, readout: &Readout) {
+    ui.vertical(|ui| {
+        ui.horizontal(|ui| {
+            let axis = DayAxis::containing(*at, readout.place);
+            let shown = naive(axis.solar.date);
+            let mut date = shown;
+            fields::date(ui, id, &mut date);
+            if date != shown {
+                let moved = DayAxis::new(date_of(day_of(date)), readout.place);
+                *at = moved.instant_at(axis.position(*at));
+            }
+            if readout.shows_civil_time {
+                ui.label(
+                    RichText::new(readout.clock.date_time(*at))
+                        .size(11.0)
+                        .color(palette::LABEL),
+                );
+            }
+        });
+        let axis = DayAxis::containing(*at, readout.place);
+        entry::entry(ui, id, at, &axis, readout);
+        moment::dial(ui, id, at, &axis, readout);
+    });
+}
+
+fn civil_field(ui: &mut Ui, id: &str, at: &mut DateTime<Utc>, clock: Option<Clock>) {
+    let local = at.with_timezone(&Local);
+    let (shown, mut hour, mut minute) = (local.date_naive(), local.hour(), local.minute());
+    let mut date = shown;
+    let mut changed = false;
     ui.horizontal(|ui| {
-        fields::date(ui, id, &mut value.0);
-        if !all_day {
-            fields::time(ui, clock, &mut value.1, &mut value.2);
+        fields::date(ui, id, &mut date);
+        if let Some(clock) = clock {
+            changed = fields::time(ui, clock, &mut hour, &mut minute);
         }
     });
+    if changed || date != shown {
+        *at = local_instant(date, hour, minute);
+    }
+}
+
+fn local_date(at: DateTime<Utc>) -> NaiveDate {
+    at.with_timezone(&Local).date_naive()
+}
+
+fn local_instant(date: NaiveDate, hour: u32, minute: u32) -> DateTime<Utc> {
+    let naive = date.and_time(NaiveTime::from_hms_opt(hour, minute, 0).unwrap_or_default());
+    Local
+        .from_local_datetime(&naive)
+        .earliest()
+        .unwrap_or_else(|| Local.from_utc_datetime(&naive))
+        .with_timezone(&Utc)
 }
 
 fn calendar_field(ui: &mut Ui, calendars: &[Calendar], chosen: &mut CalendarId) {

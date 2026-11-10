@@ -617,7 +617,7 @@ impl App {
                 self.detail = chosen;
             }
         }
-        self.change_windows(ctx, calendars);
+        self.change_windows(ctx, calendars, &readout);
         if self.moment.is_some() {
             let calendar = self.moment_calendar(calendars);
             let draft = self.moment.as_mut().expect("checked above");
@@ -637,11 +637,10 @@ impl App {
         }
     }
 
-    fn change_windows(&mut self, ctx: &egui::Context, calendars: &[Calendar]) {
-        let clock = self.clock;
+    fn change_windows(&mut self, ctx: &egui::Context, calendars: &[Calendar], readout: &Readout) {
         if let Some(editor) = self.editor.as_mut() {
             let response = egui::Modal::new(egui::Id::new("edit event"))
-                .show(ctx, |ui| editor.show(ui, calendars, clock));
+                .show(ctx, |ui| editor.show(ui, calendars, readout));
             match response.inner {
                 editor::Edited::Save(change, scope) => {
                     let reply = self
