@@ -1,3 +1,9 @@
+bogenplan (0.5.1) unstable; urgency=medium
+
+  * Show the current reading on the now line
+
+ -- David M. Anderson <david.anderson@excelano.com>  Wed, 11 Nov 2026 11:07:52 -0600
+
 bogenplan (0.5.0) unstable; urgency=medium
 
   * Open .ics files and add their events, so Bogenplan can be the desktop's calendar application
