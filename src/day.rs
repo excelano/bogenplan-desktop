@@ -386,6 +386,46 @@ impl DayView<'_> {
         let y = self.y(lane.top(), axis.position(self.now));
         painter.circle_filled(pos2(lane.left(), y), 4.0, palette::SUN);
         painter.hline(lane.x_range(), y, Stroke::new(1.5, palette::SUN));
+        self.now_label(painter, lane, y);
+    }
+
+    fn now_label(&self, painter: &Painter, lane: Rect, y: f32) {
+        let label = Label::of(&self.readout.position(self.now), 11.0, palette::SUN);
+        let civil = self.readout.shows_civil_time.then(|| {
+            painter.layout_no_wrap(
+                self.readout.clock.time(self.now),
+                FontId::proportional(11.0),
+                palette::LABEL,
+            )
+        });
+        let width =
+            label.size(painter).x + civil.as_ref().map_or(0.0, |civil| civil.size().x + 6.0) + 16.0;
+        let capsule = Rect::from_min_size(
+            pos2(
+                (lane.right() - 8.0 - width).max(lane.left()),
+                (y - 26.0).max(lane.top()),
+            ),
+            vec2(width, 20.0),
+        );
+        painter.rect_filled(
+            capsule,
+            CornerRadius::same(10),
+            with_opacity(palette::NIGHT, 0.92),
+        );
+        painter.rect_stroke(
+            capsule,
+            CornerRadius::same(10),
+            Stroke::new(0.5, with_opacity(palette::SUN, 0.4)),
+            egui::StrokeKind::Inside,
+        );
+        let drawn = label.paint(painter, pos2(capsule.left() + 8.0, capsule.center().y));
+        if let Some(civil) = civil {
+            let at = pos2(
+                drawn.right() + 6.0,
+                capsule.center().y - civil.size().y / 2.0,
+            );
+            painter.galley(at, civil, palette::LABEL);
+        }
     }
 
     fn interact(
