@@ -1,7 +1,9 @@
 // Author: David M. Anderson
 // Built with AI assistance (Claude, Anthropic)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
+use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use bogenplan_store::{Calendar, CalendarSource, Occurrence, Status, Store};
@@ -20,6 +22,7 @@ use crate::detail;
 use crate::display::{Precision, Readout, Scale};
 use crate::editor::{self, Deletion, Editor};
 use crate::glyph::Label;
+use crate::import::{self, Importing};
 use crate::moment::{Draft, Outcome};
 use crate::palette;
 use crate::place::Place;
@@ -67,6 +70,8 @@ pub struct App {
     editor: Option<Editor>,
     deletion: Option<Deletion>,
     moment: Option<Draft>,
+    opened: Option<Receiver<PathBuf>>,
+    importing: VecDeque<Importing>,
     settings_open: bool,
     sign_in: SignIn,
     latitude: String,
@@ -106,6 +111,8 @@ impl App {
             editor: None,
             deletion: None,
             moment: None,
+            opened: None,
+            importing: VecDeque::new(),
             settings_open: false,
             sign_in: SignIn::default(),
             latitude: settings
@@ -130,6 +137,17 @@ impl App {
     pub fn set_zoom(&mut self, points_per_span: f32) {
         self.settings.points_per_span =
             points_per_span.clamp(*day::POINTS_PER_SPAN.start(), *day::POINTS_PER_SPAN.end());
+    }
+
+    pub fn receive_files(&mut self, files: Receiver<PathBuf>) {
+        self.opened = Some(files);
+    }
+
+    fn take_files(&mut self) {
+        if let Some(files) = &self.opened {
+            self.importing
+                .extend(files.try_iter().map(|file| Importing::open(&file)));
+        }
     }
 
     #[cfg(feature = "screenshot")]
@@ -635,6 +653,32 @@ impl App {
                 Outcome::Open => {}
             }
         }
+        self.import_window(ctx, calendars, &readout);
+    }
+
+    fn import_window(&mut self, ctx: &egui::Context, calendars: &[Calendar], readout: &Readout) {
+        let default = self.moment_calendar(calendars);
+        let Some(importing) = self.importing.front_mut() else {
+            return;
+        };
+        let held: Vec<_> = importing
+            .uids()
+            .iter()
+            .map(|uid| self.source.calendars().holding(uid))
+            .collect();
+        let response = egui::Modal::new(egui::Id::new("import")).show(ctx, |ui| {
+            importing.show(ui, calendars, default.as_ref(), &held, readout)
+        });
+        match response.inner {
+            import::Outcome::Import(import, calendar) => {
+                let reply = self.source.calendars().import(import, calendar);
+                importing.wait(reply);
+            }
+            import::Outcome::Closed => {
+                self.importing.pop_front();
+            }
+            import::Outcome::Open => {}
+        }
     }
 
     fn change_windows(&mut self, ctx: &egui::Context, calendars: &[Calendar], readout: &Readout) {
@@ -891,6 +935,7 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.follow_today();
+        self.take_files();
         let calendars = self.source.calendars().calendars();
         let before = self.settings.clone();
 

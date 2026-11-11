@@ -2,7 +2,7 @@
 // Built with AI assistance (Claude, Anthropic)
 
 use bogenplan_store::{
-    Calendar, CalendarId, CalendarSource, Change, Occurrence, OccurrenceTime, Reply, Scope,
+    Calendar, CalendarId, CalendarSource, Change, Import, Occurrence, OccurrenceTime, Reply, Scope,
 };
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc};
 use chrono_tz::America::Chicago;
@@ -185,6 +185,14 @@ impl CalendarSource for Demo {
 
     fn delete(&self, _: &Occurrence, _: Scope) -> Reply {
         refused("The demo's events cannot be deleted.")
+    }
+
+    fn import(&self, _: Import, _: Option<CalendarId>) -> Reply {
+        refused("The demo has no calendar to add to.")
+    }
+
+    fn holding(&self, _: &str) -> Option<CalendarId> {
+        None
     }
 }
 

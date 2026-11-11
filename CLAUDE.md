@@ -1,27 +1,32 @@
 # CLAUDE.md
 
-Bogenplan for the Linux desktop: the calendars in a CalDAV account (iCloud first)
-laid out in Bogenzeit, an egui application. It is the desktop sibling of
+Bogenplan for the Linux desktop: the calendars in a CalDAV account (iCloud
+first) laid out in Bogenzeit, an egui application. It is the desktop sibling of
 excelano/bogenplan, the iPhone and iPad app, and follows that repository's
 `docs/concept.md`; the Bogenzeit spec in excelano/bogenzeit is normative. The
-only events it creates are moments, zero-length events with an alert at their
-start. It edits and deletes events by rewriting the fields it changes in the
-event's own iCalendar text (`store/src/edit.rs`), never regenerating it, and
-writes with If-Match on the cached etag. Calendars the account subscribes to
-(`cs:subscribed` in the calendar home) are read-only: `store/src/feed.rs` fetches
-each from its `cs:source` without credentials and over HTTPS only, at most
-hourly or on Sync Now, and the store refuses writes to them.
+only events it makes itself are moments, zero-length events with an alert at
+their start; an opened `.ics` file is added as the file's own text, less
+`METHOD`, `ORGANIZER` and `ATTENDEE`, one resource per UID, replacing a copy
+with the same UID (`store/src/import.rs`). It edits and deletes events by
+rewriting the fields it changes in the event's own iCalendar text
+(`store/src/edit.rs`), never regenerating it, and writes with If-Match on the
+cached etag. Calendars the account subscribes to (`cs:subscribed` in the
+calendar home) are read-only: `store/src/feed.rs` fetches each from its
+`cs:source` without credentials and over HTTPS only, at most hourly or on Sync
+Now, and the store refuses writes to them.
 
 ## Layout
 
-The store crate, `store/` (`bogenplan-store`) is CalDAV, iCalendar
-and recurrence behind `CalendarSource`: `libdav`, `icalendar`, `rrule` and the
+The store crate, `store/` (`bogenplan-store`) is CalDAV, iCalendar and
+recurrence behind `CalendarSource`: `libdav`, `icalendar`, `rrule` and the
 keyring types stay inside it and the app sees calendars and occurrences only.
 Its worker thread runs tokio, syncs on a timer, and publishes immutable
-snapshots the window reads without waiting. The app crate is the window: `day.rs`
-is the day view and the press-and-hold probe, `axis.rs` the 400-span axis,
-`display.rs` the display forms, `glyph.rs` the drawn glyphs, `demo.rs` the
-sample week behind `--demo`.
+snapshots the window reads without waiting. The app crate is the window:
+`day.rs` is the day view and the press-and-hold probe, `axis.rs` the 400-span
+axis, `display.rs` the display forms, `glyph.rs` the drawn glyphs, `import.rs`
+the sheet for an opened `.ics` file, `instance.rs` the session-bus name
+`com.excelano.Bogenplan` through which a second launch hands its files to the
+open window, `demo.rs` the sample week behind `--demo`.
 
 The engine is the `bz` crate from excelano/bogenzeit, from crates.io.
 

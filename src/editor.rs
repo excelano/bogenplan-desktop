@@ -27,20 +27,25 @@ pub enum Deleted {
     Delete(Scope),
 }
 
-struct Pending {
+pub struct Pending {
     reply: Option<Reply>,
     failure: Option<String>,
 }
 
 impl Pending {
-    fn new() -> Pending {
+    pub fn new() -> Pending {
         Pending {
             reply: None,
             failure: None,
         }
     }
 
-    fn poll(&mut self, ui: &Ui) -> bool {
+    pub fn wait(&mut self, reply: Reply) {
+        self.failure = None;
+        self.reply = Some(reply);
+    }
+
+    pub fn poll(&mut self, ui: &Ui) -> bool {
         let Some(reply) = &self.reply else {
             return false;
         };
@@ -61,11 +66,11 @@ impl Pending {
         false
     }
 
-    fn busy(&self) -> bool {
+    pub fn busy(&self) -> bool {
         self.reply.is_some()
     }
 
-    fn show(&self, ui: &mut Ui) {
+    pub fn show(&self, ui: &mut Ui) {
         if let Some(failure) = &self.failure {
             ui.label(RichText::new(failure).size(12.0).color(FAILURE));
         }
@@ -114,8 +119,7 @@ impl Editor {
     }
 
     pub fn wait(&mut self, reply: Reply) {
-        self.pending.failure = None;
-        self.pending.reply = Some(reply);
+        self.pending.wait(reply);
     }
 
     fn time(&self) -> Result<OccurrenceTime, String> {
@@ -279,8 +283,7 @@ impl Deletion {
     }
 
     pub fn wait(&mut self, reply: Reply) {
-        self.pending.failure = None;
-        self.pending.reply = Some(reply);
+        self.pending.wait(reply);
     }
 
     pub fn show(&mut self, ui: &mut Ui) -> Deleted {
@@ -378,7 +381,7 @@ fn local_instant(date: NaiveDate, hour: u32, minute: u32) -> DateTime<Utc> {
         .with_timezone(&Utc)
 }
 
-fn calendar_field(ui: &mut Ui, calendars: &[Calendar], chosen: &mut CalendarId) {
+pub fn calendar_field(ui: &mut Ui, calendars: &[Calendar], chosen: &mut CalendarId) {
     let title = calendars
         .iter()
         .find(|calendar| &calendar.id == chosen)

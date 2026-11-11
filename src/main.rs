@@ -17,6 +17,8 @@ mod editor;
 mod entry;
 mod fields;
 mod glyph;
+mod import;
+mod instance;
 mod layout;
 mod moment;
 mod palette;
@@ -27,6 +29,8 @@ mod settings;
 mod system;
 mod time;
 mod week;
+
+use std::path::PathBuf;
 
 use bogenplan_store::Store;
 use chrono::NaiveDate;
@@ -43,6 +47,22 @@ fn argument(flag: &str) -> Option<String> {
         .iter()
         .position(|argument| argument == flag)
         .and_then(|i| arguments.get(i + 1).cloned())
+}
+
+const FLAGS_WITH_VALUES: [&str; 2] = ["--date", "--zoom"];
+
+fn files() -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let mut arguments = std::env::args().skip(1);
+    while let Some(argument) = arguments.next() {
+        if FLAGS_WITH_VALUES.contains(&argument.as_str()) {
+            arguments.next();
+        } else if !argument.starts_with("--") {
+            let file = PathBuf::from(argument);
+            files.push(std::path::absolute(&file).unwrap_or(file));
+        }
+    }
+    files
 }
 
 fn visuals() -> Visuals {
@@ -72,6 +92,14 @@ fn main() -> eframe::Result {
     let opening =
         argument("--date").and_then(|text| NaiveDate::parse_from_str(&text, "%Y-%m-%d").ok());
     let zoom = argument("--zoom").and_then(|text| text.parse::<f32>().ok());
+    let opened = if demo {
+        None
+    } else {
+        match instance::claim(files()) {
+            Some(opened) => Some(opened),
+            None => return Ok(()),
+        }
+    };
 
     let viewport = egui::ViewportBuilder::default()
         .with_app_id(APP_ID)
@@ -102,6 +130,10 @@ fn main() -> eframe::Result {
                 }))
             };
             let mut app = App::new(source, opening);
+            if let Some(opened) = opened {
+                let _ = opened.window.set(cc.egui_ctx.clone());
+                app.receive_files(opened.files);
+            }
             if let Some(zoom) = zoom {
                 app.set_zoom(zoom);
             }

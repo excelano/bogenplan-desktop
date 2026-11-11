@@ -10,10 +10,12 @@ mod edit;
 mod expand;
 mod feed;
 mod ics;
+mod import;
 mod model;
 mod moment;
 mod zones;
 
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock, mpsc as reply};
@@ -22,6 +24,7 @@ use std::time::Duration;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use tokio::sync::mpsc;
 
+pub use import::{Import, Imported};
 pub use model::{Account, Calendar, CalendarId, Change, Occurrence, OccurrenceTime, Scope, Status};
 
 use cache::{CalendarData, Resource};
@@ -40,6 +43,8 @@ pub trait CalendarSource {
     fn add_moment(&self, at: DateTime<Utc>, title: String, calendar: &CalendarId) -> Reply;
     fn change(&self, occurrence: &Occurrence, change: Change, scope: Scope) -> Reply;
     fn delete(&self, occurrence: &Occurrence, scope: Scope) -> Reply;
+    fn import(&self, import: Import, calendar: Option<CalendarId>) -> Reply;
+    fn holding(&self, uid: &str) -> Option<CalendarId>;
 }
 
 pub struct Store {
@@ -78,6 +83,11 @@ enum Command {
     Delete {
         occurrence: Occurrence,
         scope: Scope,
+        reply: reply::Sender<Result<(), String>>,
+    },
+    Import {
+        import: Import,
+        calendar: Option<CalendarId>,
         reply: reply::Sender<Result<(), String>>,
     },
     SignIn {
@@ -252,6 +262,31 @@ impl CalendarSource for Store {
         });
         receiver
     }
+
+    fn import(&self, import: Import, calendar: Option<CalendarId>) -> Reply {
+        let (sender, receiver) = reply::channel();
+        let _ = self.commands.send(Command::Import {
+            import,
+            calendar,
+            reply: sender,
+        });
+        receiver
+    }
+
+    fn holding(&self, uid: &str) -> Option<CalendarId> {
+        let published = self.shared.published.read().expect("published lock");
+        published
+            .resources
+            .iter()
+            .filter(|(calendar, _, _)| {
+                published
+                    .calendars
+                    .iter()
+                    .any(|found| &found.id == calendar && !found.read_only)
+            })
+            .find(|(_, _, events)| events.iter().any(|event| event.uid == uid))
+            .map(|(calendar, _, _)| calendar.clone())
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -312,6 +347,13 @@ impl Worker {
                 reply,
             } => {
                 let _ = reply.send(self.delete(&occurrence, scope).await);
+            }
+            Command::Import {
+                import,
+                calendar,
+                reply,
+            } => {
+                let _ = reply.send(self.import(&import, calendar.as_ref()).await);
             }
             Command::SignIn { credentials, reply } => {
                 let result = match Connection::open(&credentials).await {
@@ -616,6 +658,68 @@ impl Worker {
             .insert(href, Resource::new(etag.unwrap_or_default(), ics));
         self.save();
         self.publish();
+        Ok(())
+    }
+
+    fn held(&self, uid: &str) -> Option<(usize, String)> {
+        self.calendars
+            .iter()
+            .enumerate()
+            .filter(|(_, data)| !data.calendar.read_only)
+            .find_map(|(index, data)| {
+                data.resources
+                    .iter()
+                    .find(|(_, resource)| resource.events.iter().any(|event| event.uid == uid))
+                    .map(|(href, _)| (index, href.clone()))
+            })
+    }
+
+    async fn import(
+        &mut self,
+        import: &Import,
+        calendar: Option<&CalendarId>,
+    ) -> Result<(), String> {
+        let mut connections: HashMap<usize, Connection> = HashMap::new();
+        for event in &import.events {
+            let held = self.held(&event.uid);
+            let index = match (&held, import.cancellation) {
+                (None, true) => continue,
+                (Some((index, _)), _) => *index,
+                (None, false) => {
+                    self.calendar_index(calendar.ok_or("There is no calendar to add to.")?)?
+                }
+            };
+            let connection = match connections.entry(index) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => entry.insert(self.connect(index).await?),
+            };
+            let data = &mut self.calendars[index];
+            match held {
+                Some((_, href)) => {
+                    let etag = data.resources[&href].etag.clone();
+                    if import.cancellation {
+                        connection.delete(&href, &etag).await?;
+                        data.resources.remove(&href);
+                    } else {
+                        let etag = connection.update(&href, event.text.clone(), &etag).await?;
+                        data.resources
+                            .insert(href, Resource::new(etag, event.text.clone()));
+                    }
+                }
+                None => {
+                    let name = uuid::Uuid::new_v4().to_string().to_uppercase();
+                    let (href, etag) = connection
+                        .put(&data.href, &name, event.text.clone())
+                        .await?;
+                    data.resources.insert(
+                        href,
+                        Resource::new(etag.unwrap_or_default(), event.text.clone()),
+                    );
+                }
+            }
+            self.save();
+            self.publish();
+        }
         Ok(())
     }
 

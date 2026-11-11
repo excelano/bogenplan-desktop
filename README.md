@@ -21,7 +21,7 @@ twilight bands drawn behind them and the present moment marked. Choosing an
 event shows its start and end as positions on the arc and in civil time, its
 length in spans and the eighth of the day it starts in.
 
-It creates one kind of event: a moment. Press and hold an empty part of a day and
+The one kind of event it makes itself is a moment. Press and hold an empty part of a day and
 a line shows the reading at that point; keep still until it turns gold and let
 go, or double-click, and a sheet sets the moment a step at a time or from a typed
 reading, a number before or after ○, △, ☉ or ▽. Adding it saves
@@ -37,6 +37,15 @@ whole series keeps its days, so moving one to another day is done to that
 occurrence. An edit rewrites only the fields it changes, so invitees, alarms and
 repeat rules stay as they were, and a change made elsewhere since the last sync
 is refused rather than overwritten.
+
+It opens iCalendar files, so it can be the desktop's calendar application and
+take the invitations a mail client hands it. The file's events are shown on the
+arc and added to the calendar you choose. An invitation is saved as your own
+copy, without its organizer and attendees, so the server sends nothing on your
+behalf and Bogenplan does not reply. An event already in your calendars with
+the same UID is replaced, which is how an updated invitation lands, and a
+cancellation removes it. A file opened while Bogenplan is running goes to the
+window already open.
 
 Calendars the account subscribes to, such as a school's or a team's feed added
 in iCloud, appear beside the others with their names and colours. Their events

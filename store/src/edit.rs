@@ -82,6 +82,80 @@ pub(crate) fn change(
     Ok(document.text())
 }
 
+pub(crate) struct Copies {
+    pub method: Option<String>,
+    pub events: Vec<(String, String)>,
+}
+
+const OUTSIDE_EVENTS: [&str; 4] = ["VCALENDAR", "VTIMEZONE", "STANDARD", "DAYLIGHT"];
+const SCHEDULING: [&str; 2] = ["ORGANIZER", "ATTENDEE"];
+
+pub(crate) fn own_copies(data: &str) -> Copies {
+    let document = Document::read(data);
+    let mut method = None;
+    let mut components: Vec<String> = Vec::new();
+    let mut header = Vec::new();
+    for (index, part) in document.parts.iter().enumerate() {
+        let Part::Line(line) = part else {
+            continue;
+        };
+        let upper = line.to_ascii_uppercase();
+        if let Some(component) = upper.strip_prefix("BEGIN:") {
+            components.push(component.trim().to_string());
+        }
+        let kept = components
+            .iter()
+            .all(|component| OUTSIDE_EVENTS.contains(&component.as_str()));
+        let is_method = components.len() == 1 && name_of(line).eq_ignore_ascii_case("METHOD");
+        if is_method {
+            method = Some(split(line).1.trim().to_ascii_uppercase());
+        }
+        if kept && !is_method {
+            header.push(index);
+        }
+        if upper.starts_with("END:") {
+            components.pop();
+        }
+    }
+    let mut groups: Vec<(String, Vec<(usize, Block)>)> = Vec::new();
+    for (index, block) in document.events() {
+        let mut block = block.clone();
+        let uid = match block.value("UID").map(|uid| uid.trim().to_string()) {
+            Some(uid) if !uid.is_empty() => uid,
+            _ => {
+                let uid = uuid::Uuid::new_v4().to_string().to_uppercase();
+                block.set("UID", format!("UID:{uid}"));
+                uid
+            }
+        };
+        for name in SCHEDULING {
+            block.remove(name);
+        }
+        match groups.iter_mut().find(|(found, _)| *found == uid) {
+            Some((_, blocks)) => blocks.push((index, block)),
+            None => groups.push((uid, vec![(index, block)])),
+        }
+    }
+    let events = groups
+        .into_iter()
+        .map(|(uid, blocks)| {
+            let mut parts = Vec::new();
+            for (index, part) in document.parts.iter().enumerate() {
+                if let Part::Line(line) = part
+                    && header.contains(&index)
+                {
+                    parts.push(Part::Line(line.clone()));
+                }
+                if let Some((_, block)) = blocks.iter().find(|(at, _)| *at == index) {
+                    parts.push(Part::Event(block.clone()));
+                }
+            }
+            (uid, Document { parts }.text())
+        })
+        .collect();
+    Copies { method, events }
+}
+
 enum Part {
     Line(String),
     Event(Block),

@@ -65,7 +65,7 @@ fn length(event: &Event) -> Duration {
     }
 }
 
-fn single(event: &Event) -> OccurrenceTime {
+pub(crate) fn single(event: &Event) -> OccurrenceTime {
     occurrence_at(&event.start, length(event))
 }
 

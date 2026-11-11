@@ -12,6 +12,7 @@ bogenplan \- a calendar laid out on the Sun's arc
 .IR YYYY\-MM\-DD ]
 .RB [ \-\-zoom
 .IR points ]
+.RI [ file.ics ...]
 .SH DESCRIPTION
 .B Bogenplan
 shows the calendars kept on iCloud or another CalDAV server in Bogenzeit.
@@ -23,6 +24,13 @@ Pressing and holding an empty part of a day shows the reading at that point;
 holding still until the line turns gold and letting go sets a moment there, a
 zero\-length event with an alert at its start, added to the calendar chosen in
 Settings. Double\-clicking does the same at once.
+.PP
+Opening an iCalendar file, from the command line or as the desktop's calendar
+application, shows its events and adds them to a calendar of your choosing.
+An invitation is saved as your own copy without its organizer and attendees,
+so nothing is sent to the organizer. An event already in your calendars with
+the same UID is replaced, and a cancellation removes it. When Bogenplan is
+already open, the file goes to that window.
 .SH OPTIONS
 .TP
 .B \-\-demo
