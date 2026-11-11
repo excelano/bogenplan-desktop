@@ -1,3 +1,9 @@
+bogenplan (0.5.0) unstable; urgency=medium
+
+  * Open .ics files and add their events, so Bogenplan can be the desktop's calendar application
+
+ -- David M. Anderson <david.anderson@excelano.com>  Tue, 10 Nov 2026 18:32:46 -0600
+
 bogenplan (0.4.0) unstable; urgency=medium
 
   * Set an event's start and end in Bogenzeit, by steps or a typed reading, and type a moment's reading
