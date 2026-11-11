@@ -48,7 +48,7 @@ cancellation removes it. A file opened while Bogenplan is running goes to the
 window already open.
 
 Calendars the account subscribes to, such as a school's or a team's feed added
-in iCloud, appear beside the others with their names and colours. Their events
+in iCloud, appear beside the others with their names and colors. Their events
 can be read but not edited, and a moment cannot be added to one. Bogenplan
 fetches each feed from its publisher at most once an hour, or when Sync Now is
 pressed, and always over HTTPS.
@@ -86,11 +86,11 @@ your latitude and longitude on first run; Settings changes them later.
 
 ## Privacy
 
-Events are cached in `~/.cache/bogenplan`, readable only by you, and the place
-and settings stay in `~/.config/bogenplan`. Bogenplan connects to the calendar
-server you sign in to and, for each calendar the account subscribes to, to the
-server that publishes it. A publisher learns your address and when the feed was
-fetched, and nothing else.
+Bogenplan connects only to the calendar server you sign in to and to the
+publishers of the calendars the account subscribes to.
+[SECURITY.md](SECURITY.md#what-bogenplan-can-access) says what each of them sees,
+and [What Bogenplan stores](SECURITY.md#what-bogenplan-stores) where it keeps your
+password, events and settings.
 
 ## The standard
 
@@ -99,4 +99,4 @@ which also holds the `bz` engine this app computes with.
 
 ## License
 
-MIT.
+MIT. See [LICENSE](LICENSE).
