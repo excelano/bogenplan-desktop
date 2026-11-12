@@ -13,21 +13,55 @@ use zbus::{Connection, connection, interface};
 const NAME: &str = "com.excelano.Bogenplan";
 const PATH: &str = "/com/excelano/Bogenplan";
 
+pub enum Opening {
+    File(PathBuf),
+    Feed(String),
+}
+
+impl Opening {
+    pub fn from_argument(argument: &str) -> Opening {
+        let scheme = argument
+            .split_once("://")
+            .map(|(scheme, _)| scheme.to_ascii_lowercase());
+        match scheme.as_deref() {
+            Some("webcal" | "webcals") => Opening::Feed(argument.to_string()),
+            Some("file") => {
+                let file = url::Url::parse(argument)
+                    .ok()
+                    .and_then(|url| url.to_file_path().ok())
+                    .unwrap_or_else(|| PathBuf::from(argument));
+                Opening::File(file)
+            }
+            _ => {
+                let file = PathBuf::from(argument);
+                Opening::File(std::path::absolute(&file).unwrap_or(file))
+            }
+        }
+    }
+
+    fn to_argument(&self) -> String {
+        match self {
+            Opening::File(file) => file.to_string_lossy().into_owned(),
+            Opening::Feed(address) => address.clone(),
+        }
+    }
+}
+
 pub struct Opened {
-    pub files: Receiver<PathBuf>,
+    pub openings: Receiver<Opening>,
     pub window: Arc<OnceLock<egui::Context>>,
 }
 
 struct Opener {
-    files: Sender<PathBuf>,
+    openings: Sender<Opening>,
     window: Arc<OnceLock<egui::Context>>,
 }
 
 #[interface(name = "com.excelano.Bogenplan")]
 impl Opener {
-    fn open(&self, files: Vec<String>) {
-        for file in files {
-            let _ = self.files.send(file.into());
+    fn open(&self, arguments: Vec<String>) {
+        for argument in arguments {
+            let _ = self.openings.send(Opening::from_argument(&argument));
         }
         if let Some(window) = self.window.get() {
             window.send_viewport_cmd(ViewportCommand::Focus);
@@ -36,14 +70,15 @@ impl Opener {
     }
 }
 
-pub fn claim(files: Vec<PathBuf>) -> Option<Opened> {
+pub fn claim(openings: Vec<Opening>) -> Option<Opened> {
+    let arguments: Vec<String> = openings.iter().map(Opening::to_argument).collect();
     let (sender, receiver) = mpsc::channel();
-    for file in &files {
-        let _ = sender.send(file.clone());
+    for opening in openings {
+        let _ = sender.send(opening);
     }
     let window = Arc::new(OnceLock::new());
     let opener = Opener {
-        files: sender,
+        openings: sender,
         window: Arc::clone(&window),
     };
     let (answer, answered) = mpsc::channel();
@@ -61,7 +96,7 @@ pub fn claim(files: Vec<PathBuf>) -> Option<Opened> {
                         std::future::pending::<()>().await;
                     }
                     Err(_) => {
-                        let _ = answer.send(forward(&files).await.is_ok());
+                        let _ = answer.send(forward(arguments).await.is_ok());
                     }
                 }
             });
@@ -71,7 +106,7 @@ pub fn claim(files: Vec<PathBuf>) -> Option<Opened> {
         .recv_timeout(Duration::from_secs(3))
         .unwrap_or(false);
     (!forwarded).then_some(Opened {
-        files: receiver,
+        openings: receiver,
         window,
     })
 }
@@ -90,14 +125,35 @@ async fn serve(opener: Opener) -> zbus::Result<Connection> {
     }
 }
 
-async fn forward(files: &[PathBuf]) -> zbus::Result<()> {
-    let files: Vec<String> = files
-        .iter()
-        .map(|file| file.to_string_lossy().into_owned())
-        .collect();
+async fn forward(arguments: Vec<String>) -> zbus::Result<()> {
     Connection::session()
         .await?
-        .call_method(Some(NAME), PATH, Some(NAME), "Open", &(files,))
+        .call_method(Some(NAME), PATH, Some(NAME), "Open", &(arguments,))
         .await
         .map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arguments_are_files_or_feeds() {
+        assert!(matches!(
+            Opening::from_argument("webcal://example.com/a.ics"),
+            Opening::Feed(address) if address == "webcal://example.com/a.ics"
+        ));
+        assert!(matches!(
+            Opening::from_argument("WEBCALS://example.com/a.ics"),
+            Opening::Feed(_)
+        ));
+        assert!(matches!(
+            Opening::from_argument("file:///tmp/an%20invite.ics"),
+            Opening::File(file) if file.as_path() == std::path::Path::new("/tmp/an invite.ics")
+        ));
+        assert!(matches!(
+            Opening::from_argument("/tmp/invite.ics"),
+            Opening::File(file) if file.as_path() == std::path::Path::new("/tmp/invite.ics")
+        ));
+    }
 }

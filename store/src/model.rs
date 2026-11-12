@@ -109,3 +109,26 @@ pub enum Status {
     NoAccounts,
     Failed(String),
 }
+
+pub(crate) fn hex(color: [u8; 3]) -> String {
+    format!("#{:02X}{:02X}{:02X}", color[0], color[1], color[2])
+}
+
+pub(crate) fn parse_hex(hex: &str) -> Option<[u8; 3]> {
+    let hex = hex.trim().trim_start_matches('#');
+    let byte = |i: usize| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok();
+    Some([byte(0)?, byte(2)?, byte(4)?])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn colors_round_trip_through_hex() {
+        assert_eq!(hex([0x0E, 0x61, 0xB9]), "#0E61B9");
+        assert_eq!(parse_hex("#0E61B9FF"), Some([0x0E, 0x61, 0xB9]));
+        assert_eq!(parse_hex("#FFCC00"), Some([0xFF, 0xCC, 0x00]));
+        assert_eq!(parse_hex("blue"), None);
+    }
+}

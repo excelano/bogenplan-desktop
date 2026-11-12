@@ -10,9 +10,11 @@ their start; an opened `.ics` file is added as the file's own text, less
 with the same UID (`store/src/import.rs`). It edits and deletes events by
 rewriting the fields it changes in the event's own iCalendar text
 (`store/src/edit.rs`), never regenerating it, and writes with If-Match on the
-cached etag. Calendars the account subscribes to (`cs:subscribed` in the
-calendar home) are read-only: `store/src/feed.rs` fetches each from its
-`cs:source` without credentials and over HTTPS only, at most hourly or on Sync
+cached etag. Subscribed calendars are read-only: those the account subscribes to
+(`cs:subscribed` in the calendar home, fetched from their `cs:source`) and those
+subscribed in Bogenplan by address, which need no account and are kept in the
+keyring under `service=bogenplan-feed` with their color. `store/src/feed.rs`
+fetches each without credentials and over HTTPS only, at most hourly or on Sync
 Now, and the store refuses writes to them.
 
 ## Layout
@@ -24,9 +26,10 @@ Its worker thread runs tokio, syncs on a timer, and publishes immutable
 snapshots the window reads without waiting. The app crate is the window:
 `day.rs` is the day view and the press-and-hold probe, `axis.rs` the 400-span
 axis, `display.rs` the display forms, `glyph.rs` the drawn glyphs, `import.rs`
-the sheet for an opened `.ics` file, `instance.rs` the session-bus name
-`com.excelano.Bogenplan` through which a second launch hands its files to the
-open window, `demo.rs` the sample week behind `--demo`.
+the sheet for an opened `.ics` file, `subscribe.rs` the subscription field and
+the sheet for an opened `webcal://` link, `instance.rs` the session-bus name
+`com.excelano.Bogenplan` through which a second launch hands its files and links
+to the open window, `demo.rs` the sample week behind `--demo`.
 
 The engine is the `bz` crate from excelano/bogenzeit, from crates.io.
 
@@ -53,5 +56,4 @@ positions are the floor of the signed value. ☉, ○, △ and ▽ are drawn by
 `glyph.rs`, never set in a font, so no glyph characters in UI strings. The
 window is the night palette whatever the desktop theme, because the sky is the
 content. Calendar data and the place stay on the machine; the only connections
-are to the calendar server and to the publishers of the account's subscribed
-calendars. Don't commit, push or publish unless David asks.
+are to the calendar server and to the publishers of subscribed calendars. Don't commit, push or publish unless David asks.

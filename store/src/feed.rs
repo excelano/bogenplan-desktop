@@ -82,7 +82,7 @@ impl Feeds {
     }
 }
 
-fn secure(source: &str) -> Result<Uri, String> {
+pub(crate) fn secure(source: &str) -> Result<Uri, String> {
     let (scheme, rest) = source
         .split_once("://")
         .ok_or_else(|| format!("{source} is not a feed address"))?;
@@ -92,6 +92,19 @@ fn secure(source: &str) -> Result<Uri, String> {
     format!("https://{rest}")
         .parse()
         .map_err(|_| format!("{source} is not a feed address"))
+}
+
+pub(crate) fn name(source: &str) -> String {
+    let Ok(uri) = secure(source) else {
+        return source.to_string();
+    };
+    let file = uri.path().rsplit('/').next().unwrap_or_default();
+    let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+    if stem.is_empty() {
+        uri.host().unwrap_or(source).to_string()
+    } else {
+        stem.to_string()
+    }
 }
 
 fn resolve(from: &Uri, location: &str) -> Result<Uri, String> {
@@ -136,6 +149,16 @@ mod tests {
         );
         assert!(secure("ftp://example.com/a.ics").is_err());
         assert!(secure("example.com/a.ics").is_err());
+    }
+
+    #[test]
+    fn a_feed_without_a_name_is_named_by_its_file() {
+        assert_eq!(
+            name("webcal://example.com/caldata/USHolidays.ics"),
+            "USHolidays"
+        );
+        assert_eq!(name("https://example.com/feed?id=4"), "feed");
+        assert_eq!(name("https://example.com/"), "example.com");
     }
 
     #[test]

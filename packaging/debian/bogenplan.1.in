@@ -12,7 +12,7 @@ bogenplan \- a calendar laid out on the Sun's arc
 .IR YYYY\-MM\-DD ]
 .RB [ \-\-zoom
 .IR points ]
-.RI [ file.ics ...]
+.RI [ file.ics " | " webcal://address ...]
 .SH DESCRIPTION
 .B Bogenplan
 shows the calendars kept on iCloud or another CalDAV server in Bogenzeit.
@@ -31,6 +31,13 @@ An invitation is saved as your own copy without its organizer and attendees,
 so nothing is sent to the organizer. An event already in your calendars with
 the same UID is replaced, and a cancellation removes it. When Bogenplan is
 already open, the file goes to that window.
+.PP
+Opening a
+.B webcal://
+address asks to subscribe to that calendar. A subscribed calendar is shown
+read\-only beside the others and fetched from its publisher over HTTPS at most
+once an hour. Settings also subscribes by address, recolors a subscription and
+removes it.
 .SH OPTIONS
 .TP
 .B \-\-demo
@@ -55,6 +62,12 @@ with
 .B server
 and
 .B username
+beside it. The address of each calendar subscribed in Bogenplan is kept under
+.BR service=bogenplan\-feed ,
+with
+.B feed
+and
+.B color
 beside it.
 .SH EXIT STATUS
 Returns success when the window has been closed. A non\-zero status means the

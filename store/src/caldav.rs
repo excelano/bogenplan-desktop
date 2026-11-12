@@ -21,7 +21,7 @@ use tower_http::auth::AddAuthorization;
 
 use crate::cache::{CalendarData, Resource};
 use crate::credentials::Credentials;
-use crate::model::{Calendar, CalendarId};
+use crate::model::{Calendar, CalendarId, parse_hex};
 
 type Http = AddAuthorization<Client<HttpsConnector<HttpConnector>, String>>;
 type Dav = CalDavClient<Http>;
@@ -166,7 +166,7 @@ impl Connection {
             id: CalendarId(format!("{} {}", self.account, collection.href)),
             title: property(&names::DISPLAY_NAME).unwrap_or_else(|| collection.href.clone()),
             color: property(&names::CALENDAR_COLOUR)
-                .and_then(|hex| color(&hex))
+                .and_then(|hex| parse_hex(&hex))
                 .unwrap_or([0x8F, 0xA3, 0xBF]),
             account: self.account.clone(),
             order: property(&names::CALENDAR_ORDER)
@@ -416,22 +416,9 @@ fn describe<E: std::fmt::Display>(credentials: &Credentials, error: &E) -> Strin
     refusal(credentials, &error.to_string())
 }
 
-fn color(hex: &str) -> Option<[u8; 3]> {
-    let hex = hex.trim().trim_start_matches('#');
-    let byte = |i: usize| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok();
-    Some([byte(0)?, byte(2)?, byte(4)?])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn colors_drop_their_alpha() {
-        assert_eq!(color("#0E61B9FF"), Some([0x0E, 0x61, 0xB9]));
-        assert_eq!(color("#FFCC00"), Some([0xFF, 0xCC, 0x00]));
-        assert_eq!(color("blue"), None);
-    }
 
     #[test]
     fn a_bare_host_is_https() {

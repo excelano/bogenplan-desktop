@@ -29,11 +29,21 @@ pub use model::{Account, Calendar, CalendarId, Change, Occurrence, OccurrenceTim
 
 use cache::{CalendarData, Resource};
 use caldav::Connection;
-use credentials::Credentials;
+use credentials::{Credentials, Feed};
 use feed::Feeds;
 
 const SYNC_EVERY: Duration = Duration::from_secs(300);
 const FETCH_FEEDS_EVERY: chrono::Duration = chrono::Duration::hours(1);
+pub const SUBSCRIPTIONS: &str = "Subscriptions";
+pub const SUBSCRIPTION_COLORS: [[u8; 3]; 7] = [
+    [0xFF, 0x29, 0x68],
+    [0xFF, 0x95, 0x00],
+    [0xFF, 0xCC, 0x00],
+    [0x63, 0xDA, 0x38],
+    [0x1B, 0xAD, 0xF8],
+    [0xCC, 0x73, 0xE1],
+    [0xA2, 0x84, 0x5E],
+];
 
 pub type Reply = reply::Receiver<Result<(), String>>;
 
@@ -97,6 +107,17 @@ enum Command {
     SignOut {
         account: Account,
     },
+    Subscribe {
+        source: String,
+        reply: reply::Sender<Result<(), String>>,
+    },
+    Unsubscribe {
+        calendar: CalendarId,
+    },
+    Recolor {
+        calendar: CalendarId,
+        color: [u8; 3],
+    },
 }
 
 impl Store {
@@ -113,6 +134,7 @@ impl Store {
             path: cache_dir.join("calendars.json"),
             calendars: Vec::new(),
             accounts: Vec::new(),
+            subscriptions: Vec::new(),
             feeds: Feeds::new(),
         };
         std::thread::Builder::new()
@@ -161,6 +183,28 @@ impl Store {
 
     pub fn sign_out(&self, account: Account) {
         let _ = self.commands.send(Command::SignOut { account });
+    }
+
+    pub fn subscribe(&self, source: String) -> Reply {
+        let (sender, receiver) = reply::channel();
+        let _ = self.commands.send(Command::Subscribe {
+            source,
+            reply: sender,
+        });
+        receiver
+    }
+
+    pub fn unsubscribe(&self, calendar: &CalendarId) {
+        let _ = self.commands.send(Command::Unsubscribe {
+            calendar: calendar.clone(),
+        });
+    }
+
+    pub fn recolor(&self, calendar: &CalendarId, color: [u8; 3]) {
+        let _ = self.commands.send(Command::Recolor {
+            calendar: calendar.clone(),
+            color,
+        });
     }
 
     fn year(&self, year: i32) -> Arc<Vec<Occurrence>> {
@@ -289,10 +333,20 @@ impl CalendarSource for Store {
     }
 }
 
+fn standalone_id(feed: &Feed) -> CalendarId {
+    CalendarId(format!("{SUBSCRIPTIONS} {}", feed.id))
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Feeding {
     Now,
     WhenDue,
+}
+
+#[derive(Clone, Copy)]
+enum FeedSource<'a> {
+    Subscribed(&'a Connection, &'a str),
+    Standalone(&'a str),
 }
 
 struct Worker {
@@ -300,6 +354,7 @@ struct Worker {
     path: PathBuf,
     calendars: Vec<CalendarData>,
     accounts: Vec<Credentials>,
+    subscriptions: Vec<Feed>,
     feeds: Result<Feeds, String>,
 }
 
@@ -373,6 +428,27 @@ impl Worker {
                 self.save();
                 self.sync(Feeding::WhenDue).await;
             }
+            Command::Subscribe { source, reply } => {
+                let result = self.subscribe(&source).await;
+                let succeeded = result.is_ok();
+                let _ = reply.send(result);
+                if succeeded {
+                    self.sync(Feeding::WhenDue).await;
+                }
+            }
+            Command::Unsubscribe { calendar } => {
+                if let Some(feed) = self.subscription(&calendar) {
+                    let _ = credentials::forget_feed(&feed.id).await;
+                }
+                self.calendars.retain(|data| data.calendar.id != calendar);
+                self.save();
+                self.sync(Feeding::WhenDue).await;
+            }
+            Command::Recolor { calendar, color } => {
+                if let Err(error) = self.recolor(&calendar, color).await {
+                    self.set_status(Status::Failed(error));
+                }
+            }
         }
     }
 
@@ -383,14 +459,15 @@ impl Worker {
 
     async fn sync(&mut self, feeding: Feeding) {
         self.set_status(Status::Syncing);
-        self.accounts = match credentials::all().await {
-            Ok(accounts) => accounts,
-            Err(error) => {
+        let loaded = match (credentials::all().await, credentials::feeds().await) {
+            (Ok(accounts), Ok(subscriptions)) => (accounts, subscriptions),
+            (Err(error), _) | (_, Err(error)) => {
                 self.set_status(Status::Failed(error));
                 return;
             }
         };
-        if self.accounts.is_empty() {
+        (self.accounts, self.subscriptions) = loaded;
+        if self.accounts.is_empty() && self.subscriptions.is_empty() {
             self.calendars.clear();
             self.save();
             self.publish();
@@ -398,11 +475,32 @@ impl Worker {
             return;
         }
         let keys: HashSet<String> = self.accounts.iter().map(Credentials::key).collect();
-        self.calendars
-            .retain(|data| keys.contains(&data.calendar.account));
+        let feeds: HashSet<String> = self
+            .subscriptions
+            .iter()
+            .map(|feed| feed.id.clone())
+            .collect();
+        self.calendars.retain(|data| {
+            keys.contains(&data.calendar.account)
+                || (data.calendar.account == SUBSCRIPTIONS && feeds.contains(&data.href))
+        });
         let mut failures = Vec::new();
         for credentials in self.accounts.clone() {
             failures.extend(self.sync_account(&credentials, feeding).await);
+        }
+        for feed in self.subscriptions.clone() {
+            let calendar = self.standalone(&feed);
+            let fetched = self
+                .fetch_feed(
+                    calendar,
+                    feed.id.clone(),
+                    feeding,
+                    FeedSource::Standalone(&feed.source),
+                )
+                .await;
+            if let Err(error) = fetched {
+                failures.push(error);
+            }
         }
         self.save();
         self.publish();
@@ -454,7 +552,11 @@ impl Worker {
             }
         }
         for (calendar, href) in subscribed.into_iter().flatten() {
-            if let Err(error) = self.fetch_feed(&connection, calendar, href, feeding).await {
+            let source = FeedSource::Subscribed(&connection, &href);
+            if let Err(error) = self
+                .fetch_feed(calendar, href.clone(), feeding, source)
+                .await
+            {
                 failures.push(error);
             }
         }
@@ -476,10 +578,10 @@ impl Worker {
 
     async fn fetch_feed(
         &mut self,
-        connection: &Connection,
         calendar: Calendar,
         href: String,
         feeding: Feeding,
+        source: FeedSource<'_>,
     ) -> Result<(), String> {
         let index = self.index_of(&calendar.account, &href);
         let mut data = index.map_or_else(
@@ -494,11 +596,14 @@ impl Worker {
                 .fetched
                 .is_none_or(|fetched| now - fetched >= FETCH_FEEDS_EVERY);
         let fetched = if due {
-            Some(self.feed(connection, &href).await)
+            Some(self.feed(source).await)
         } else {
             None
         };
         if let Some(Ok(text)) = &fetched {
+            if let (FeedSource::Standalone(_), Some(name)) = (source, ics::calendar_name(text)) {
+                data.calendar.title = name;
+            }
             data.resources = [(href.clone(), Resource::new(String::new(), text.clone()))].into();
             data.fetched = Some(now);
         }
@@ -510,12 +615,103 @@ impl Worker {
         }
     }
 
-    async fn feed(&self, connection: &Connection, href: &str) -> Result<String, String> {
+    async fn feed(&self, source: FeedSource<'_>) -> Result<String, String> {
         let feeds = self.feeds.as_ref()?;
-        let source = connection.source(href).await?;
+        let source = match source {
+            FeedSource::Subscribed(connection, href) => connection.source(href).await?,
+            FeedSource::Standalone(source) => source.to_string(),
+        };
         let text = feeds.fetch(&source).await?;
         ics::parse(&text).map_err(|error| format!("the feed could not be read ({error})"))?;
         Ok(text)
+    }
+
+    fn standalone(&self, feed: &Feed) -> Calendar {
+        let id = standalone_id(feed);
+        let title = self
+            .calendars
+            .iter()
+            .find(|data| data.calendar.id == id)
+            .and_then(|data| data.resources.values().next())
+            .and_then(|resource| ics::calendar_name(&resource.data))
+            .unwrap_or_else(|| feed::name(&feed.source));
+        Calendar {
+            id,
+            title,
+            color: feed.color,
+            account: SUBSCRIPTIONS.to_string(),
+            order: 0,
+            read_only: true,
+        }
+    }
+
+    fn subscription(&self, calendar: &CalendarId) -> Option<Feed> {
+        self.subscriptions
+            .iter()
+            .find(|feed| &standalone_id(feed) == calendar)
+            .cloned()
+    }
+
+    fn unused_color(&self) -> [u8; 3] {
+        SUBSCRIPTION_COLORS
+            .into_iter()
+            .find(|color| {
+                self.calendars
+                    .iter()
+                    .all(|data| data.calendar.color != *color)
+            })
+            .unwrap_or(SUBSCRIPTION_COLORS[self.subscriptions.len() % SUBSCRIPTION_COLORS.len()])
+    }
+
+    async fn subscribe(&mut self, source: &str) -> Result<(), String> {
+        let source = source.trim();
+        let address = feed::secure(source)?;
+        if self
+            .subscriptions
+            .iter()
+            .any(|feed| feed::secure(&feed.source).is_ok_and(|known| known == address))
+        {
+            return Err("That calendar is already subscribed.".to_string());
+        }
+        let text = self.feed(FeedSource::Standalone(source)).await?;
+        let feed = Feed {
+            id: uuid::Uuid::new_v4().to_string().to_uppercase(),
+            source: source.to_string(),
+            color: self.unused_color(),
+        };
+        credentials::save_feed(&feed).await?;
+        let mut data = CalendarData::new(self.standalone(&feed), feed.id.clone());
+        if let Some(name) = ics::calendar_name(&text) {
+            data.calendar.title = name;
+        }
+        data.resources = [(feed.id.clone(), Resource::new(String::new(), text))].into();
+        data.fetched = Some(Utc::now());
+        self.calendars.push(data);
+        self.subscriptions.push(feed);
+        self.save();
+        self.publish();
+        Ok(())
+    }
+
+    async fn recolor(&mut self, calendar: &CalendarId, color: [u8; 3]) -> Result<(), String> {
+        let mut feed = self
+            .subscription(calendar)
+            .ok_or("Only a subscription added here can change color.")?;
+        feed.color = color;
+        credentials::recolor_feed(&feed).await?;
+        for known in &mut self.subscriptions {
+            if known.id == feed.id {
+                known.color = color;
+            }
+        }
+        for data in &mut self.calendars {
+            if &data.calendar.id == calendar {
+                data.calendar.color = color;
+            }
+        }
+        self.save();
+        self.publish();
+        Ok(())
     }
 
     fn calendar_index(&self, calendar: &CalendarId) -> Result<usize, String> {
@@ -733,8 +929,14 @@ impl Worker {
             .iter()
             .map(|data| data.calendar.clone())
             .collect();
-        calendars
-            .sort_by(|a, b| (&a.account, a.order, &a.title).cmp(&(&b.account, b.order, &b.title)));
+        calendars.sort_by_key(|calendar| {
+            (
+                calendar.account == SUBSCRIPTIONS,
+                calendar.account.clone(),
+                calendar.order,
+                calendar.title.clone(),
+            )
+        });
         let resources = self
             .calendars
             .iter()

@@ -26,17 +26,17 @@ mod place;
 #[cfg(feature = "screenshot")]
 mod screenshot;
 mod settings;
+mod subscribe;
 mod system;
 mod time;
 mod week;
-
-use std::path::PathBuf;
 
 use bogenplan_store::Store;
 use chrono::NaiveDate;
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Visuals};
 
 use crate::app::{App, Source};
+use crate::instance::Opening;
 
 const APP_ID: &str = "bogenplan";
 const PRODUCT: &str = "Bogenplan";
@@ -51,18 +51,17 @@ fn argument(flag: &str) -> Option<String> {
 
 const FLAGS_WITH_VALUES: [&str; 2] = ["--date", "--zoom"];
 
-fn files() -> Vec<PathBuf> {
-    let mut files = Vec::new();
+fn openings() -> Vec<Opening> {
+    let mut openings = Vec::new();
     let mut arguments = std::env::args().skip(1);
     while let Some(argument) = arguments.next() {
         if FLAGS_WITH_VALUES.contains(&argument.as_str()) {
             arguments.next();
         } else if !argument.starts_with("--") {
-            let file = PathBuf::from(argument);
-            files.push(std::path::absolute(&file).unwrap_or(file));
+            openings.push(Opening::from_argument(&argument));
         }
     }
-    files
+    openings
 }
 
 fn visuals() -> Visuals {
@@ -95,7 +94,7 @@ fn main() -> eframe::Result {
     let opened = if demo {
         None
     } else {
-        match instance::claim(files()) {
+        match instance::claim(openings()) {
             Some(opened) => Some(opened),
             None => return Ok(()),
         }
@@ -132,7 +131,7 @@ fn main() -> eframe::Result {
             let mut app = App::new(source, opening);
             if let Some(opened) = opened {
                 let _ = opened.window.set(cc.egui_ctx.clone());
-                app.receive_files(opened.files);
+                app.receive(opened.openings);
             }
             if let Some(zoom) = zoom {
                 app.set_zoom(zoom);

@@ -180,7 +180,7 @@ fn read(path: &Path) -> Result<Import, String> {
     Import::read(&text)
 }
 
-fn heading(ui: &mut Ui, title: &str, file: &str) {
+pub fn heading(ui: &mut Ui, title: &str, file: &str) {
     ui.vertical_centered(|ui| {
         ui.label(RichText::new(title).size(15.0).strong());
         ui.label(RichText::new(file).size(11.0).color(palette::LABEL));

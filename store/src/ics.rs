@@ -66,6 +66,17 @@ pub(crate) fn parse(data: &str) -> Result<Vec<Event>, String> {
         .collect())
 }
 
+pub(crate) fn calendar_name(data: &str) -> Option<String> {
+    let unfolded = unfold(data);
+    let calendar = read_calendar(&unfolded).ok()?;
+    let name = calendar
+        .properties
+        .iter()
+        .find(|prop| prop.name.as_str() == "X-WR-CALNAME")?;
+    Some(name.val.clone().unescape_text().as_str().trim().to_string())
+        .filter(|name| !name.is_empty())
+}
+
 fn collect<'a>(components: &'a [Component<'a>], into: &mut Vec<&'a Component<'a>>) {
     for component in components {
         if component.name.as_str() == "VCALENDAR" {
@@ -274,6 +285,16 @@ mod tests {
         );
         let utc = stamp("20261104T162000Z", false, None).unwrap();
         assert_eq!(utc.to_utc().to_rfc3339(), "2026-11-04T16:20:00+00:00");
+    }
+
+    #[test]
+    fn a_feed_names_itself() {
+        let named = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nX-WR-CALNAME:US Holidays\\, federal\r\nEND:VCALENDAR\r\n";
+        assert_eq!(
+            calendar_name(named).as_deref(),
+            Some("US Holidays, federal")
+        );
+        assert_eq!(calendar_name(OVERRIDDEN), None);
     }
 
     #[test]

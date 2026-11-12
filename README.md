@@ -47,11 +47,15 @@ the same UID is replaced, which is how an updated invitation lands, and a
 cancellation removes it. A file opened while Bogenplan is running goes to the
 window already open.
 
-Calendars the account subscribes to, such as a school's or a team's feed added
-in iCloud, appear beside the others with their names and colors. Their events
-can be read but not edited, and a moment cannot be added to one. Bogenplan
-fetches each feed from its publisher at most once an hour, or when Sync Now is
-pressed, and always over HTTPS.
+Subscribed calendars appear beside the others: those the account subscribes
+to, such as a school's or a team's feed added in iCloud, and those added in
+Bogenplan by their address, from Settings or by opening a `webcal://` link. A
+calendar added in Bogenplan takes its name from the feed and a color that
+Settings can change. A Google or Outlook calendar can be shown this way from
+its secret or published iCalendar address. Subscribed events can be read but
+not edited, and a moment cannot be added to one. Bogenplan fetches each feed
+from its publisher at most once an hour, or when Sync Now is pressed, and
+always over HTTPS.
 
 ## Install
 
@@ -79,7 +83,8 @@ Sign in with your server, user name and password. For iCloud the server is
 app-specific one made at account.apple.com under Sign-In and Security; your
 Apple Account password is refused by the server and should not be used. The
 password goes into the desktop keyring under `service=bogenplan`, so an entry
-made with `secret-tool` works as well.
+made with `secret-tool` works as well. Subscribing to a calendar by its address
+needs no account, so Bogenplan can show subscriptions alone.
 
 Solar noon, sunrise and sunset depend on where you are, so Bogenplan asks for
 your latitude and longitude on first run; Settings changes them later.
@@ -87,7 +92,7 @@ your latitude and longitude on first run; Settings changes them later.
 ## Privacy
 
 Bogenplan connects only to the calendar server you sign in to and to the
-publishers of the calendars the account subscribes to.
+publishers of the calendars you subscribe to.
 [SECURITY.md](SECURITY.md#what-bogenplan-can-access) says what each of them sees,
 and [What Bogenplan stores](SECURITY.md#what-bogenplan-stores) where it keeps your
 password, events and settings.

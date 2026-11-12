@@ -2,11 +2,12 @@
 // Built with AI assistance (Claude, Anthropic)
 
 use std::collections::{HashMap, VecDeque};
-use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-use bogenplan_store::{Calendar, CalendarSource, Occurrence, Status, Store};
+use bogenplan_store::{
+    Calendar, CalendarSource, Occurrence, SUBSCRIPTION_COLORS, SUBSCRIPTIONS, Status, Store,
+};
 use chrono::{DateTime, NaiveDate, Utc, Weekday};
 use eframe::egui::{
     self, Align, Key, KeyboardShortcut, Layout, Modifiers, RichText, ScrollArea, Ui,
@@ -23,10 +24,12 @@ use crate::display::{Precision, Readout, Scale};
 use crate::editor::{self, Deletion, Editor};
 use crate::glyph::Label;
 use crate::import::{self, Importing};
+use crate::instance::Opening;
 use crate::moment::{Draft, Outcome};
 use crate::palette;
 use crate::place::Place;
 use crate::settings::Settings;
+use crate::subscribe::Subscribe;
 use crate::system;
 use crate::time::instant;
 use crate::week;
@@ -70,10 +73,12 @@ pub struct App {
     editor: Option<Editor>,
     deletion: Option<Deletion>,
     moment: Option<Draft>,
-    opened: Option<Receiver<PathBuf>>,
+    opened: Option<Receiver<Opening>>,
     importing: VecDeque<Importing>,
+    subscribing: VecDeque<Subscribe>,
     settings_open: bool,
     sign_in: SignIn,
+    subscribe: Subscribe,
     latitude: String,
     longitude: String,
     #[cfg(feature = "screenshot")]
@@ -113,8 +118,10 @@ impl App {
             moment: None,
             opened: None,
             importing: VecDeque::new(),
+            subscribing: VecDeque::new(),
             settings_open: false,
             sign_in: SignIn::default(),
+            subscribe: Subscribe::new(String::new()),
             latitude: settings
                 .place
                 .map(|place| format!("{:.4}", place.latitude))
@@ -139,14 +146,33 @@ impl App {
             points_per_span.clamp(*day::POINTS_PER_SPAN.start(), *day::POINTS_PER_SPAN.end());
     }
 
-    pub fn receive_files(&mut self, files: Receiver<PathBuf>) {
-        self.opened = Some(files);
+    pub fn receive(&mut self, openings: Receiver<Opening>) {
+        self.opened = Some(openings);
     }
 
-    fn take_files(&mut self) {
-        if let Some(files) = &self.opened {
-            self.importing
-                .extend(files.try_iter().map(|file| Importing::open(&file)));
+    fn take_openings(&mut self) {
+        let Some(openings) = &self.opened else {
+            return;
+        };
+        for opening in openings.try_iter() {
+            match opening {
+                Opening::File(file) => self.importing.push_back(Importing::open(&file)),
+                Opening::Feed(address) => self.subscribing.push_back(Subscribe::new(address)),
+            }
+        }
+    }
+
+    fn subscribe_window(&mut self, ctx: &egui::Context) {
+        let Source::Live(store) = &self.source else {
+            return;
+        };
+        let Some(subscribing) = self.subscribing.front_mut() else {
+            return;
+        };
+        let response = egui::Modal::new(egui::Id::new("subscribe"))
+            .show(ctx, |ui| subscribing.sheet(ui, store));
+        if response.inner {
+            self.subscribing.pop_front();
         }
     }
 
@@ -779,14 +805,25 @@ impl App {
                             self.settings.hidden_calendars.insert(calendar.id.0.clone());
                         }
                     }
-                    let (dot, _) =
-                        ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                    let standalone = calendar.account == SUBSCRIPTIONS;
+                    let sense = if standalone {
+                        egui::Sense::click()
+                    } else {
+                        egui::Sense::hover()
+                    };
+                    let (dot, response) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), sense);
                     ui.painter().circle_filled(
                         dot.center(),
                         5.0,
                         palette::calendar(calendar.color),
                     );
                     ui.label(&calendar.title);
+                    if let (true, Source::Live(store)) = (standalone, &self.source) {
+                        swatches(&response.on_hover_text("Color"), store, calendar);
+                        if ui.small_button("Unsubscribe").clicked() {
+                            store.unsubscribe(&calendar.id);
+                        }
+                    }
                 });
             }
         }
@@ -835,9 +872,12 @@ impl App {
                 }
             });
             ui.collapsing("Add an account", |ui| self.sign_in.show(ui, store));
+            ui.collapsing("Subscribe to a calendar", |ui| {
+                self.subscribe.field(ui, store)
+            });
             note(
                 ui,
-                "Passwords are kept in the GNOME keyring. Events are cached on this computer and sent nowhere but the calendar server.",
+                "Passwords and subscription addresses are kept in the GNOME keyring. Events are cached on this computer and sent nowhere but the calendar server.",
             );
         }
 
@@ -936,7 +976,7 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.follow_today();
-        self.take_files();
+        self.take_openings();
         let calendars = self.source.calendars().calendars();
         let before = self.settings.clone();
 
@@ -950,10 +990,14 @@ impl eframe::App for App {
             self.gate(
                 ui,
                 "Your calendars",
-                "Bogenplan shows your calendars laid out on the Sun's arc, and adds the moments you set to them. Sign in to iCloud or another CalDAV server.",
+                "Bogenplan shows your calendars laid out on the Sun's arc, and adds the moments you set to them. Sign in to iCloud or another CalDAV server, or subscribe to a published calendar by its address.",
                 |app, ui| {
                     if let Source::Live(store) = &app.source {
                         app.sign_in.show(ui, store);
+                        ui.add_space(8.0);
+                        ui.collapsing("Subscribe to a calendar", |ui| {
+                            app.subscribe.field(ui, store);
+                        });
                     }
                 },
             );
@@ -968,6 +1012,7 @@ impl eframe::App for App {
             );
         }
         self.windows(&ctx, self.settings.place, &calendars);
+        self.subscribe_window(&ctx);
         self.settings_window(&ctx, &calendars);
         if self.settings != before && !self.demo() {
             self.settings.save();
@@ -983,6 +1028,30 @@ fn section(ui: &mut Ui, title: &str) {
     ui.add_space(10.0);
     ui.label(RichText::new(title).size(12.0).strong().color(palette::SUN));
     ui.add_space(2.0);
+}
+
+fn swatches(dot: &egui::Response, store: &Store, calendar: &Calendar) {
+    egui::Popup::menu(dot).show(|ui| {
+        ui.horizontal(|ui| {
+            for color in SUBSCRIPTION_COLORS {
+                let (swatch, response) =
+                    ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
+                ui.painter()
+                    .circle_filled(swatch.center(), 8.0, palette::calendar(color));
+                if color == calendar.color {
+                    ui.painter().circle_stroke(
+                        swatch.center(),
+                        8.0,
+                        egui::Stroke::new(2.0, palette::LINE),
+                    );
+                }
+                if response.clicked() {
+                    store.recolor(&calendar.id, color);
+                    ui.close();
+                }
+            }
+        });
+    });
 }
 
 fn note(ui: &mut Ui, text: &str) {
