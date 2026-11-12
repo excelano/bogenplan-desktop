@@ -816,24 +816,44 @@ impl Worker {
             return Ok(());
         }
         let destination = self.calendar_index(&change.calendar)?;
+        let arrival = self.connect(destination).await?;
+        connection.delete(&occurrence.href, &resource.etag).await?;
+        self.calendars[index].resources.remove(&occurrence.href);
         let name = uuid::Uuid::new_v4().to_string().to_uppercase();
-        let (href, etag) = self
-            .connect(destination)
-            .await?
+        let copied = arrival
             .put(&self.calendars[destination].href, &name, text.clone())
-            .await?;
-        self.calendars[destination]
-            .resources
-            .insert(href, Resource::new(etag.unwrap_or_default(), text));
-        let removed = connection.delete(&occurrence.href, &resource.etag).await;
-        if removed.is_ok() {
-            self.calendars[index].resources.remove(&occurrence.href);
-        }
+            .await;
+        let result = match copied {
+            Ok((href, etag)) => {
+                self.calendars[destination]
+                    .resources
+                    .insert(href, Resource::new(etag.unwrap_or_default(), text));
+                Ok(())
+            }
+            Err(error) => {
+                let restored = connection
+                    .put(&self.calendars[index].href, &name, resource.data.clone())
+                    .await;
+                match restored {
+                    Ok((href, etag)) => {
+                        self.calendars[index].resources.insert(
+                            href,
+                            Resource::new(etag.unwrap_or_default(), resource.data),
+                        );
+                        Err(format!(
+                            "The event could not be moved, and stays in its calendar: {error}"
+                        ))
+                    }
+                    Err(lost) => Err(format!(
+                        "The event was removed from its calendar but could not be added to the \
+                         new one ({error}), nor put back ({lost})."
+                    )),
+                }
+            }
+        };
         self.save();
         self.publish();
-        removed.map_err(|error| {
-            format!("The event was copied, but the original could not be removed: {error}")
-        })
+        result
     }
 
     async fn add_moment(
