@@ -39,8 +39,14 @@ The engine is the `bz` crate from excelano/bogenzeit, from crates.io.
     cargo test --workspace
     cargo run -- --demo --date 2026-11-04
     cargo run --example sync -p bogenplan-store -- <cache dir>
+    BOGENPLAN_TEST_SERVER=http://127.0.0.1:5232 BOGENPLAN_TEST_USERNAME=<user> \
+      BOGENPLAN_TEST_PASSWORD=<password> cargo test -p bogenplan-store -- --ignored
     ./packaging/debian/build-deb.sh
     ./packaging/linux/check-libraries.sh
+
+The ignored test takes a moment through creation, sync, edit, a refused stale
+edit and deletion on the first calendar of a real server, outside the keyring. A
+local Radicale serves; on iCloud the moment's alert rings on every device.
 
 The `screenshot` feature lets a build photograph its own window:
 `BOGENPLAN_SCREENSHOT=<png>` saves one after `BOGENPLAN_SCREENSHOT_DELAY`

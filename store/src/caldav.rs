@@ -434,4 +434,57 @@ mod tests {
         assert!(base_uri("http://[::1]:5232/").is_ok());
         assert!(base_uri("http://caldav.example.com/").is_err());
     }
+
+    #[test]
+    #[ignore = "needs BOGENPLAN_TEST_SERVER, BOGENPLAN_TEST_USERNAME and BOGENPLAN_TEST_PASSWORD"]
+    fn a_server_takes_a_moment_through_its_whole_life() {
+        let variable = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name}"));
+        let credentials = Credentials {
+            server: variable("BOGENPLAN_TEST_SERVER"),
+            username: variable("BOGENPLAN_TEST_USERNAME"),
+            password: variable("BOGENPLAN_TEST_PASSWORD"),
+        };
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let (connection, home) = Connection::open(&credentials).await.unwrap();
+                let (calendar, href) = connection
+                    .calendars(&home)
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .next()
+                    .expect("a calendar on the server");
+                let data = connection
+                    .sync(calendar.clone(), href.clone(), None)
+                    .await
+                    .unwrap();
+
+                let uid = uuid::Uuid::new_v4().to_string().to_uppercase();
+                let now = chrono::Utc::now();
+                let text = crate::moment::ics(&uid, now, "Bogenplan test", now);
+                let (resource, etag) = connection.put(&href, &uid, text.clone()).await.unwrap();
+                let data = connection
+                    .sync(calendar.clone(), href.clone(), Some(data))
+                    .await
+                    .unwrap();
+                let synced = &data.resources[&resource];
+                assert_eq!(synced.events[0].uid, uid);
+                let etag = etag.unwrap_or_else(|| synced.etag.clone());
+
+                let renamed = text.replace("Bogenplan test", "Bogenplan test renamed");
+                let newer = connection
+                    .update(&resource, renamed.clone(), &etag)
+                    .await
+                    .unwrap();
+                let stale = connection.update(&resource, renamed, &etag).await;
+                assert!(stale.unwrap_err().contains("changed on the server"));
+
+                connection.delete(&resource, &newer).await.unwrap();
+                let data = connection.sync(calendar, href, Some(data)).await.unwrap();
+                assert!(!data.resources.contains_key(&resource));
+            });
+    }
 }
