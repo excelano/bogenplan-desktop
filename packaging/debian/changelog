@@ -1,3 +1,10 @@
+bogenplan (0.6.0) unstable; urgency=medium
+
+  * Choose your calendar service when signing in, with its server filled in
+  * Subscribe to a published calendar by its address or a webcal link, with or without an account
+
+ -- David M. Anderson <david.anderson@excelano.com>  Wed, 11 Nov 2026 20:34:57 -0600
+
 bogenplan (0.5.2) unstable; urgency=medium
 
   * Drop the unreadable calendar icon from the date buttons
