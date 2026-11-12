@@ -25,7 +25,8 @@ keyring types stay inside it and the app sees calendars and occurrences only.
 Its worker thread runs tokio, syncs on a timer, and publishes immutable
 snapshots the window reads without waiting. The app crate is the window:
 `day.rs` is the day view and the press-and-hold probe, `axis.rs` the 400-span
-axis, `display.rs` the display forms, `glyph.rs` the drawn glyphs, `import.rs`
+axis, `display.rs` the display forms, `accounts.rs` the sign-in form and its
+service presets, `glyph.rs` the drawn glyphs, `import.rs`
 the sheet for an opened `.ics` file, `subscribe.rs` the subscription field and
 the sheet for an opened `webcal://` link, `instance.rs` the session-bus name
 `com.excelano.Bogenplan` through which a second launch hands its files and links

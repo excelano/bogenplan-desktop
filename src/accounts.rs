@@ -1,67 +1,130 @@
 // Author: David M. Anderson
 // Built with AI assistance (Claude, Anthropic)
 
-use bogenplan_store::{Reply, Store};
+use bogenplan_store::Store;
 use eframe::egui::{self, RichText, TextEdit, Ui};
 
+use crate::editor::Pending;
 use crate::palette;
 
-pub const ICLOUD: &str = "caldav.icloud.com";
+const ICLOUD: &str = "caldav.icloud.com";
+
+struct Service {
+    name: &'static str,
+    server: Option<&'static str>,
+    username: &'static str,
+    password: &'static str,
+    note: Option<&'static str>,
+}
+
+const SERVICES: [Service; 6] = [
+    Service {
+        name: "iCloud",
+        server: Some(ICLOUD),
+        username: "Apple Account",
+        password: "App-specific password",
+        note: Some(
+            "Make an app-specific password at account.apple.com, under Sign-In and Security.",
+        ),
+    },
+    Service {
+        name: "Fastmail",
+        server: Some("caldav.fastmail.com"),
+        username: "Email address",
+        password: "App password",
+        note: Some("Make an app password with calendar access in Fastmail's settings."),
+    },
+    Service {
+        name: "mailbox.org",
+        server: Some("dav.mailbox.org"),
+        username: "Email address",
+        password: "Password",
+        note: None,
+    },
+    Service {
+        name: "Posteo",
+        server: Some("posteo.de:8443"),
+        username: "Email address",
+        password: "Password",
+        note: None,
+    },
+    Service {
+        name: "Nextcloud",
+        server: None,
+        username: "User name",
+        password: "App password",
+        note: Some(
+            "The server is your Nextcloud's address; if it is not found, add /remote.php/dav to it. Make an app password in Nextcloud under Settings, Security.",
+        ),
+    },
+    Service {
+        name: "Other CalDAV server",
+        server: None,
+        username: "User name",
+        password: "Password",
+        note: None,
+    },
+];
+
+pub fn service_name(server: &str) -> Option<&'static str> {
+    SERVICES
+        .iter()
+        .find(|service| service.server == Some(server))
+        .map(|service| service.name)
+}
 
 pub struct SignIn {
+    service: usize,
     server: String,
     username: String,
     password: String,
-    pending: Option<Reply>,
-    failure: Option<String>,
+    pending: Pending,
 }
 
 impl Default for SignIn {
     fn default() -> SignIn {
         SignIn {
-            server: ICLOUD.to_string(),
+            service: 0,
+            server: String::new(),
             username: String::new(),
             password: String::new(),
-            pending: None,
-            failure: None,
+            pending: Pending::new(),
         }
     }
 }
 
 impl SignIn {
     pub fn show(&mut self, ui: &mut Ui, store: &Store) {
-        if let Some(reply) = &self.pending {
-            match reply.try_recv() {
-                Ok(Ok(())) => *self = SignIn::default(),
-                Ok(Err(error)) => {
-                    self.failure = Some(error);
-                    self.pending = None;
-                }
-                Err(std::sync::mpsc::TryRecvError::Empty) => ui
-                    .ctx()
-                    .request_repaint_after(std::time::Duration::from_millis(200)),
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.pending = None,
-            }
+        if self.pending.poll(ui) {
+            *self = SignIn::default();
         }
+        let service = &SERVICES[self.service];
         egui::Grid::new("sign in")
             .num_columns(2)
             .spacing([12.0, 8.0])
             .show(ui, |ui| {
-                ui.label("Server");
-                ui.add(TextEdit::singleline(&mut self.server).desired_width(260.0));
+                ui.label("Service");
+                egui::ComboBox::from_id_salt("service")
+                    .selected_text(service.name)
+                    .show_ui(ui, |ui| {
+                        for (index, choice) in SERVICES.iter().enumerate() {
+                            ui.selectable_value(&mut self.service, index, choice.name);
+                        }
+                    });
                 ui.end_row();
-                ui.label(if self.server == ICLOUD {
-                    "Apple Account"
-                } else {
-                    "User name"
-                });
+                if service.server.is_none() {
+                    ui.label("Server");
+                    ui.add(
+                        TextEdit::singleline(&mut self.server)
+                            .hint_text("caldav.example.com")
+                            .desired_width(260.0),
+                    );
+                    ui.end_row();
+                }
+                ui.label(service.username);
                 ui.add(TextEdit::singleline(&mut self.username).desired_width(260.0));
                 ui.end_row();
-                ui.label(if self.server == ICLOUD {
-                    "App-specific password"
-                } else {
-                    "Password"
-                });
+                ui.label(service.password);
                 ui.add(
                     TextEdit::singleline(&mut self.password)
                         .password(true)
@@ -69,39 +132,26 @@ impl SignIn {
                 );
                 ui.end_row();
             });
-        if self.server == ICLOUD {
-            ui.label(
-                RichText::new("Make an app-specific password at account.apple.com, under Sign-In and Security.")
-                    .size(11.0)
-                    .color(palette::LABEL),
-            );
+        if let Some(note) = service.note {
+            ui.label(RichText::new(note).size(11.0).color(palette::LABEL));
         }
-        if let Some(failure) = &self.failure {
-            ui.label(
-                RichText::new(failure)
-                    .size(12.0)
-                    .color(egui::Color32::from_rgb(0xFF, 0x8A, 0x80)),
-            );
-        }
+        self.pending.show(ui);
+        let server = service.server.unwrap_or(self.server.trim()).to_string();
         ui.horizontal(|ui| {
-            let ready = !self.server.trim().is_empty()
+            let ready = !server.is_empty()
                 && !self.username.trim().is_empty()
                 && !self.password.trim().is_empty();
             if ui
-                .add_enabled(
-                    ready && self.pending.is_none(),
-                    egui::Button::new("Sign In"),
-                )
+                .add_enabled(ready && !self.pending.busy(), egui::Button::new("Sign In"))
                 .clicked()
             {
-                self.failure = None;
-                self.pending = Some(store.sign_in(
-                    self.server.trim().to_string(),
+                self.pending.wait(store.sign_in(
+                    server,
                     self.username.trim().to_string(),
                     self.password.trim().to_string(),
                 ));
             }
-            if self.pending.is_some() {
+            if self.pending.busy() {
                 ui.spinner();
             }
         });

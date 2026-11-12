@@ -1060,8 +1060,10 @@ fn note(ui: &mut Ui, text: &str) {
 
 fn account_title(key: &str) -> String {
     match key.rsplit_once('@') {
-        Some((username, crate::accounts::ICLOUD)) => format!("iCloud · {username}"),
-        Some((username, server)) => format!("{server} · {username}"),
+        Some((username, server)) => format!(
+            "{} · {username}",
+            crate::accounts::service_name(server).unwrap_or(server)
+        ),
         None => key.to_string(),
     }
 }

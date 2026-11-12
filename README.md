@@ -78,10 +78,12 @@ account.
 
 ## First run
 
-Sign in with your server, user name and password. For iCloud the server is
-`caldav.icloud.com`, the user name is your Apple Account, and the password is an
-app-specific one made at account.apple.com under Sign-In and Security; your
-Apple Account password is refused by the server and should not be used. The
+Choose your calendar service and sign in. iCloud and other common providers are
+listed with their server filled in; any other CalDAV server, such as a
+Nextcloud, is reached by its address. For iCloud the user name is your Apple
+Account and the password is an app-specific one made at account.apple.com under
+Sign-In and Security; your Apple Account password is refused by the server and
+should not be used. The
 password goes into the desktop keyring under `service=bogenplan`, so an entry
 made with `secret-tool` works as well. Subscribing to a calendar by its address
 needs no account, so Bogenplan can show subscriptions alone.
