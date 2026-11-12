@@ -319,7 +319,8 @@ impl App {
                 egui_extras::DatePickerButton::new(&mut picked)
                     .id_salt("go to date")
                     .format("%-d %b %Y")
-                    .calendar_week(false),
+                    .calendar_week(false)
+                    .show_icon(false),
             );
             if picked != before
                 && let Some(date) = NaiveDate::from_ymd_opt(

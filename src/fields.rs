@@ -13,7 +13,8 @@ pub fn date(ui: &mut Ui, id: &str, date: &mut NaiveDate) {
         egui_extras::DatePickerButton::new(&mut picked)
             .id_salt(id)
             .format("%a %-d %b %Y")
-            .calendar_week(false),
+            .calendar_week(false)
+            .show_icon(false),
     );
     if picked != before
         && let Some(chosen) = NaiveDate::from_ymd_opt(
